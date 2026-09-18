@@ -25,6 +25,11 @@ USD 输出 (默认一次导出三份, 按 DCC 各取所需, 无需再手工换�
    <name>_ue.usda       UE      — cm + Z-up, 面向 +X (UE 的 Z-up/厘米/前向惯例, 免转换)
    (--usd-variants maya 可只导主文件; 后缀自动跟随 .usda/.usdc/.usdz 扩展名)
 
+绑定姿势与摆位 (默认, 面向动捕重定向):
+   T-Pose 起手 (双肩 roll ±90° 水平外展, --pose zero 可退回 URDF 零位) + 双脚贴地
+   (脚底抬到世界 Z=0, pelvis 在 Z≈0.79 m; --no-ground 可退回 URDF 原生 pelvis 原点)。
+   T-Pose 偏移量记录在 meta JSON 的 pose.joint_offsets_deg (机器人真值回放时补偿)。
+
 The generated USD contains a UsdSkel skeleton + skinned meshes (exported in
 centimeters by default so it drops into Maya's default cm scene at true size).
 A sidecar .json stores every joint's axis/limits for retargeting.
@@ -58,6 +63,9 @@ CONFIG = {
     "usd_variants": "maya,houdini,ue",  # 自动导出的 DCC 变体 (逗号分隔): maya / houdini / ue
     "skip_links": "force_sensor|imu|d435|mid360",  # regex; links to drop (noise)
     "face_maya": True,  # rotate rig so it faces +Z in Maya (Blender -Y forward)
+    "pose": "tpose",    # 绑定姿势: "tpose" = 肩 roll ±90° 水平外展 (动捕重定向标准起手),
+                        #            "zero" = URDF 官方零位 (手臂下垂, 机器人真值回放用)
+    "ground": True,     # 双脚贴地 (脚底抬到世界 Z=0; False = pelvis 在原点, URDF 原生)
     "auto_smooth": True,
     "auto_uv": True,          # STL 没有 UV, 自动 Smart UV Project (想自己贴图必须有 UV)
     "hik": True,              # 补 HIK (MotionBuilder/Maya HumanIK) 虚拟骨: 颈椎+双脚尖 (零权重)
@@ -122,6 +130,32 @@ class Urdf:
         for j in self.children.get(link, []):
             M, _, _ = _origin(j)
             self._compute_world(j.find("child").get("link"), parent_world @ M)
+
+    def apply_tpose(self, angle_deg=90.0):
+        """把双肩 roll 关节各转 ±90° (左 + / 右 -), 手臂水平外展成 T-Pose。
+
+        直接改写 self.world (各 link 的零位世界变换) —— 之后骨骼/网格/蒙皮全部
+        直接按 T-Pose 构建, 绑定姿势 (bind pose) 即 T-Pose, 无需任何事后 posing。
+        返回 {骨名: 角度deg} 供 meta 记录 (机器人真值回放时做补偿用)。"""
+        offsets = {}
+        for side, sign in (("left", 1.0), ("right", -1.0)):
+            link = "%s_shoulder_roll_link" % side
+            j = self.joint_by_child.get(link)
+            if link not in self.world or j is None or j.find("axis") is None:
+                continue
+            axis = (self.world[link].to_3x3()
+                    @ Vector(_floats(j.find("axis").get("xyz"), (1, 0, 0)))).normalized()
+            pivot = self.world[link].translation
+            R = (Matrix.Translation(pivot)
+                 @ Matrix.Rotation(sign * math.radians(angle_deg), 4, axis)
+                 @ Matrix.Translation(-pivot))
+            stack = [link]
+            while stack:                      # 该关节子树 (上臂→手→手指) 全部跟随
+                l = stack.pop()
+                self.world[l] = R @ self.world[l]
+                stack += [j2.find("child").get("link") for j2 in self.children.get(l, [])]
+            offsets[link] = sign * angle_deg
+        return offsets
 
     @staticmethod
     def joint_parent_link(j):
@@ -808,6 +842,26 @@ def apply_maya_facing(arm_obj):
     arm_obj.rotation_euler = (0.0, 0.0, -math.pi / 2)
 
 
+def apply_ground_offset(arm_obj, meshes):
+    """URDF 的原点在 pelvis —— 直接导入机器人会"站"在地下 (G1 脚底在 Z=-0.79m)。
+    这里把整个骨架抬起, 让最低的网格点 (脚底/轮子) 正好落在世界 Z=0 (双足贴地站立)。
+    返回抬升量 (米); pelvis 世界高度 = 抬升量。"""
+    bpy.context.view_layer.update()
+    zmin = None
+    for o in meshes:
+        mw = o.matrix_world
+        for v in o.data.vertices:          # 逐顶点精确求最低点 (bound_box 在网格带旋转时会偏)
+            z = (mw @ v.co).z
+            if zmin is None or z < zmin:
+                zmin = z
+    if zmin is None:
+        return 0.0
+    off = -zmin
+    arm_obj.location.z += off
+    bpy.context.view_layer.update()
+    return off
+
+
 # ----------------------------------------------------------------------------
 # USD export
 # ----------------------------------------------------------------------------
@@ -913,7 +967,8 @@ def gui_popup(title, lines):
 # ----------------------------------------------------------------------------
 # Metadata json (joint axes / limits, for retargeting & robotics)
 # ----------------------------------------------------------------------------
-def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None):
+def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None,
+               pose_name="zero", pose_offsets=None, ground=None):
     if usd_files:
         units_str = "URDF native: meters, Z-up.  USD files: " + "; ".join(
             "%s=%s,%s-up" % (v["name"], v["units"], v["up"]) for v in usd_files)
@@ -944,6 +999,16 @@ def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None):
             }
             for v in usd_files
         }
+    data["pose"] = {
+        "name": pose_name,
+        "description": ("T-Pose: 双肩 roll ±90° 水平外展 (动捕重定向标准起手)"
+                        if pose_name == "tpose" else "URDF 官方零位 (手臂自然下垂)"),
+        "joint_offsets_deg": dict(pose_offsets or {}),
+        "note": ("绑定姿势即 T-Pose。机器人真值回放补偿: urdf关节角 = 骨骼局部旋转 + 上述偏移"
+                 if pose_offsets else "骨骼局部旋转 = urdf 关节角 (无偏移)"),
+    }
+    if ground is not None:
+        data["ground"] = ground
     if hik_helpers:
         valid = set(keep) | set(hik_helpers)
         data["hik"] = {
@@ -1048,6 +1113,10 @@ def get_args():
     p.add_argument("--skip-links", default="force_sensor|imu|d435|mid360")
     p.add_argument("--keep-urdf-orientation", action="store_true",
                    help="do not rotate the rig to face Maya's +Z (keeps URDF +X facing)")
+    p.add_argument("--pose", choices=["tpose", "zero"], default="tpose",
+                   help="绑定姿势: tpose = T-Pose 肩外展 (动捕重定向标准, 默认); zero = URDF 零位 (机器人真值回放)")
+    p.add_argument("--no-ground", action="store_true",
+                   help="不抬到脚底贴地 (保持 pelvis 在世界原点, URDF 原生行为)")
     p.add_argument("--no-smooth", action="store_true")
     p.add_argument("--no-uv", action="store_true", help="跳过自动展 UV (STL 默认无 UV)")
     p.add_argument("--no-hik", action="store_true",
@@ -1066,6 +1135,7 @@ def main():
             "usd_units": args.usd_units, "usd_up": args.usd_up, "skip_links": args.skip_links,
             "usd_variants": args.usd_variants,
             "face_maya": not args.keep_urdf_orientation, "auto_smooth": not args.no_smooth,
+            "pose": args.pose, "ground": not args.no_ground,
             "auto_uv": not args.no_uv, "nice_materials": not args.flat_colors,
             "hik": not args.no_hik,
         }
@@ -1088,6 +1158,15 @@ def main():
     print("Blender:", bpy.app.version_string)
 
     urdf = Urdf(urdf_path)
+    pose_offsets = {}
+    if cfg.get("pose", "zero") == "tpose":
+        pose_offsets = urdf.apply_tpose()
+        if pose_offsets:
+            print("Pose   : T-Pose (肩 roll 外展: %s)" %
+                  ", ".join("%s%+.0f°" % (k.replace("_shoulder_roll_link", ""), v)
+                            for k, v in sorted(pose_offsets.items())))
+        else:
+            print("Pose   : [提示] 未找到 shoulder_roll 关节, 保持 URDF 零位")
     keep = select_links(urdf, cfg["skip_links"])
     n_movable = sum(1 for j in urdf.joints if j.get("type") in ("revolute", "continuous", "prismatic"))
     print("Robot  : %s | links %d | joints %d (movable %d) | skeleton bones %d"
@@ -1102,6 +1181,16 @@ def main():
                          cfg.get("nice_materials", True), cfg.get("auto_uv", True))
     if cfg.get("face_maya", True):
         apply_maya_facing(arm_obj)
+    ground_info = None
+    if cfg.get("ground", True):
+        off = apply_ground_offset(arm_obj, meshes)
+        ground_info = {
+            "feet_at_world_z": 0.0,
+            "pelvis_height_m": round(off, 4),
+            "lift_offset_m": round(off, 4),
+            "note": "脚底(或轮子)贴世界 Z=0; pelvis 抬到 Z=%.3f m (URDF 原点在 pelvis, 原生脚底在 -0.79m)" % off,
+        }
+        print("Ground : 脚底贴地 (骨架抬升 %.3f m, pelvis 在 Z=%.3f m)" % (off, off))
     print("Built  : %d bones, %d mesh objects" % (len(arm_data.bones), len(meshes)))
     if hik_helpers:
         print(" HIK   : + %d helper bones (%s) - 零权重, 重定向用, 可删"
@@ -1116,7 +1205,9 @@ def main():
     usd_plan = plan_usd_variants(usd_path, cfg)
 
     if meta_path:
-        write_meta(urdf, keep, meta_path, cfg["usd_units"], hik_helpers, usd_files=usd_plan)
+        write_meta(urdf, keep, meta_path, cfg["usd_units"], hik_helpers, usd_files=usd_plan,
+                   pose_name=cfg.get("pose", "zero"), pose_offsets=pose_offsets,
+                   ground=ground_info)
         print("Meta   :", meta_path)
     if blend_path:
         if cfg["blend"] or bpy.app.background:
@@ -1152,6 +1243,9 @@ def main():
         "JSON (关节元数据): %s" % meta_path,
         "Blend (可选): %s" % (blend_path if (cfg["blend"] or bpy.app.background) else "未自动保存 (File > Save As 手动保存)"),
         "",
+        "绑定姿势: %s | 摆位: %s" % (
+            "T-Pose (重定向标准)" if cfg.get("pose") == "tpose" else "URDF 零位",
+            "双脚贴地 (pelvis Z≈0.79m)" if cfg.get("ground", True) else "pelvis 在原点 (URDF 原生)"),
         "Maya: File > Import 选 USD / maya_import_g1.py",
         "Houdini/UE: 直接用对应后缀的 _houdini / _ue 文件, 免换单位轴向",
     ]

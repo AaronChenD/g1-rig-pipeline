@@ -1583,26 +1583,41 @@
   ],
   "usd_files": {
     "maya": {
-      "file": "dfq.usda",
+      "file": "tp.usda",
       "units": "cm",
       "up": "Y",
       "facing": "+Z (DCC 前向)",
       "target_dcc": "Maya"
     },
     "houdini": {
-      "file": "dfq_houdini.usda",
+      "file": "tp_houdini.usda",
       "units": "m",
       "up": "Y",
       "facing": "+Z (DCC 前向)",
       "target_dcc": "Houdini"
     },
     "ue": {
-      "file": "dfq_ue.usda",
+      "file": "tp_ue.usda",
       "units": "cm",
       "up": "Z",
       "facing": "+X (URDF/UE 原生)",
       "target_dcc": "Unreal Engine"
     }
+  },
+  "pose": {
+    "name": "tpose",
+    "description": "T-Pose: 双肩 roll ±90° 水平外展 (动捕重定向标准起手)",
+    "joint_offsets_deg": {
+      "left_shoulder_roll_link": 90.0,
+      "right_shoulder_roll_link": -90.0
+    },
+    "note": "绑定姿势即 T-Pose。机器人真值回放补偿: urdf关节角 = 骨骼局部旋转 + 上述偏移"
+  },
+  "ground": {
+    "feet_at_world_z": 0.0,
+    "pelvis_height_m": 0.7923,
+    "lift_offset_m": 0.7923,
+    "note": "脚底(或轮子)贴世界 Z=0; pelvis 抬到 Z=0.792 m (URDF 原点在 pelvis, 原生脚底在 -0.79m)"
   },
   "hik": {
     "note": "MotionBuilder/Maya HumanIK 骨骼映射表; helpers 为零权重虚拟骨, 可随时删除 (骨骼上 hik_helper=True)",
