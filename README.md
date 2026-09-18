@@ -153,7 +153,7 @@ git clone https://github.com/unitreerobotics/unitree_ros.git
 
 ```python
 CONFIG = {
-    "urdf":   r"C:\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf",
+    "urdf":   r"D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf",
     ...
 }
 ```
@@ -165,13 +165,13 @@ CONFIG = {
 **命令行用法（后台批处理，不开界面）：**
 
 ```bat
-blender --background --python blender_import_urdf.py -- "C:\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf" --blend "C:\g1_rig\g1.blend" --usd "C:\g1_rig\g1.usda" --meta "C:\g1_rig\g1.json" --render "C:\g1_rig\g1.png"
+blender --background --python blender_import_urdf.py -- "D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf" --blend "D:\BlenderPro\G1\g1.blend" --usd "D:\BlenderPro\G1\g1.usda" --meta "D:\BlenderPro\G1\g1.json" --render "D:\BlenderPro\G1\g1.png"
 ```
 
 或者直接用 `scripts\convert_g1.bat`（自动找 blender、建输出目录）：
 
 ```bat
-scripts\convert_g1.bat C:\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf C:\g1_rig
+scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf D:\BlenderPro\G1
 ```
 
 常用参数：
@@ -249,7 +249,7 @@ def SkelRoot "g1_..._skeleton"
 2. 粘贴 `scripts/maya_import_g1.py` 全部内容，改开头一行路径：
 
 ```python
-USD_FILE = r"C:\g1_rig\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda"
+USD_FILE = r"D:\BlenderPro\G1\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda"
 ```
 
 3. **Ctrl+Enter** 运行。预期输出：
@@ -396,7 +396,11 @@ Blender 官方从未内置 URDF 导入。本仓库脚本就是为 Blender 4.4~5.
 带 UV 的 `.usda` 文本约 128 MB。把输出后缀改成 `.usdc`（二进制）约 1/3 大小，内容完全一致；`.usdz` 则是打包格式（单文件分发，Maya 2025 也能直接读）。
 
 **Q13：Maya 脚本提示找不到 USD 文件？**
-USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都会自动生成，默认保存在 **URDF 同目录**（如 `D:\...\unitree_ros\robots\g1_description\g1_..._DFQ.usda`）。GUI 模式运行完成后会**弹窗显示完整路径**（也可在 Window → Toggle System Console 看 `USD :` 那行）。把 `maya_import_g1.py` 开头的 `USD_FILE` 改成这个完整路径即可。
+USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都会自动生成，默认保存在 **URDF 同目录**（如 `D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_..._DFQ.usda`）。GUI 模式运行完成后会**弹窗显示完整路径**（也可在 Window → Toggle System Console 看 `USD :` 那行）。把 `maya_import_g1.py` 开头的 `USD_FILE` 改成这个完整路径即可。
+
+**Q14：Maya 导入报 `Ill-formed SdfPath` / `Invalid prim name '鍘熺悊鍖朹BSDF'`？**
+**中文版 Blender 的坑**：中文界面下 Principled BSDF 节点名是 `原理化BSDF`，Blender 导出 USD 时把它写成了 Shader prim 名；Maya（Windows/GBK 环境）解析非 ASCII prim 名失败，整个文件导入报错（乱码 `鍘熺悊鍖朹BSDF` 就是 UTF-8 的"原理化BSDF"被按 GBK 读出来的样子）。**2025-09-18 后的脚本已修复**：节点按类型查找 + 强制所有节点名 ASCII。用新版脚本在 Blender 里重新 Run Script（自动覆盖旧 .usda）即可。不想重跑的话，用 VSCode/Notepad++ 打开 .usda，把 `原理化BSDF` 全部替换为 `Principled_BSDF`（保持 UTF-8 保存）也能修好。
+
 
 ---
 

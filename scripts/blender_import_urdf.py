@@ -41,7 +41,7 @@ import xml.etree.ElementTree as ET
 # CONFIG - used when running from the Blender GUI (Scripting tab)
 # ----------------------------------------------------------------------------
 CONFIG = {
-    "urdf":   r"C:\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf",
+    "urdf":   r"D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf",
     "blend":  r"",    # optional: save .blend next to the URDF if left empty
     "usd":    r"",    # optional: export USD next to the URDF if left empty
     "meta":   r"",    # optional: joint metadata .json path
@@ -292,10 +292,23 @@ _NICE_MATERIALS = {
 }
 
 
+def _new_material(mat_name):
+    """Create a node-based material (separate function so tests can simulate
+    non-English Blender locales, where default node names are localized)."""
+    mat = bpy.data.materials.new(mat_name)
+    mat.use_nodes = True
+    return mat
+
+
 def urdf_material(urdf, vis_el, mesh_obj, nice=True):
     """Apply the <visual><material> color to a mesh (Principled BSDF).
     nice=True 时用 _NICE_MATERIALS 的白壳/深灰金属预设 (官方无贴图, 观感更接近真机);
-    nice=False 时严格按 URDF 的 RGBA 纯色 + 默认粗糙度."""
+    nice=False 时严格按 URDF 的 RGBA 纯色 + 默认粗糙度.
+
+    Locale-proof: 节点按类型查找 (中文版 Blender 里节点名是 "原理化BSDF",
+    按 "Principled BSDF" 字符串查找会静默失败); 并强制把所有节点名改写成
+    ASCII —— 否则 USD 里会出现非 ASCII 的 Shader prim 名, Maya (Windows,
+    GBK locale) 解析直接报 Ill-formed SdfPath 导致整个文件导入失败."""
     mat_el = vis_el.find("material")
     if mat_el is None:
         return
@@ -310,10 +323,23 @@ def urdf_material(urdf, vis_el, mesh_obj, nice=True):
     mat_name = "urdf_" + (mat_el.get("name") or "mat")
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
-        mat = bpy.data.materials.new(mat_name)
-        mat.use_nodes = True
-        bsdf = mat.node_tree.nodes.get("Principled BSDF")
-        if bsdf:
+        mat = _new_material(mat_name)
+        nt = mat.node_tree
+        # 1) 全部节点名强制 ASCII (USD prim 名必须是 ASCII 标识符)
+        for n in nt.nodes:
+            if any(ord(ch) > 127 for ch in n.name):
+                if n.type == "BSDF_PRINCIPLED":
+                    n.name = "Principled_BSDF"
+                elif n.type == "OUTPUT_MATERIAL":
+                    n.name = "Material_Output"
+                else:
+                    n.name = "Node"
+            n.label = n.name
+        # 2) 按类型找 BSDF 节点 (不依赖界面语言)
+        bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if bsdf is not None:
+            bsdf.name = "Principled_BSDF"   # 确保英文名也统一成无空格 ASCII
+            bsdf.label = "Principled_BSDF"
             preset = _NICE_MATERIALS.get(mat_el.get("name")) if nice else None
             if preset:
                 bsdf.inputs["Base Color"].default_value = (*preset["base"], 1.0)

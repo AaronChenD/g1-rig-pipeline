@@ -6,7 +6,7 @@ REM  用法:
 REM     convert_g1.bat <URDF路径> <输出目录> [blender.exe路径]
 REM
 REM  示例:
-REM     convert_g1.bat C:\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf C:\g1_rig
+REM     convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf D:\BlenderPro\G1
 REM     convert_g1.bat my_g1.urdf out\ "C:\Program Files\Blender Foundation\Blender 5.0\blender.exe"
 REM
 REM  产出 (输出目录下):

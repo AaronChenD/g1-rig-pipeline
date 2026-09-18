@@ -32,9 +32,8 @@ import os
 # ---------------------------------------------------------------------------
 # 配置 CONFIG
 # ---------------------------------------------------------------------------
-USD_FILE = r"C:\g1_rig\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda"   # <-- 改成你的路径
-# 默认生成位置: URDF 同目录, 例如
-#   D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda
+USD_FILE = r"D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda"
+# 默认生成位置 = URDF 同目录 (blender_import_urdf.py 自动导出, 不需要手动导出)
 
 
 def load_usd_plugin():
@@ -57,7 +56,17 @@ def import_usd(path):
         cmds.mayaUSDImport(file=path, primPath="/")
     except Exception as e:
         print("[ERROR] mayaUSDImport 失败: %s" % e)
-        print("        备选: 菜单 File > Import..., 文件类型选 USD, 直接导入。")
+        if ("Ill-formed" in str(e)) or ("Invalid prim name" in str(e)) or ("not a valid prim" in str(e)):
+            print("-" * 60)
+            print("[原因] 中文版 Blender 生成的旧 USD 里材质节点名是中文 (原理化BSDF),")
+            print("       Maya 在 Windows 下解析非 ASCII prim 名会失败。")
+            print("[解决] 用修复版 blender_import_urdf.py (2025-09-18 之后) 重新生成 USD:")
+            print("       1. 在 Blender 里重新 Run Script (会自动覆盖旧 .usda)")
+            print("       2. 再回来运行本脚本")
+            print("[临时替代] 不想重跑的话: 用 VSCode/Notepad++ 打开 .usda,")
+            print("           把 原理化BSDF 全部替换成 Principled_BSDF (保存为 UTF-8) 也能修好。")
+        else:
+            print("        备选: 菜单 File > Import..., 文件类型选 USD, 直接导入。")
         return False
     new = [o for o in cmds.ls(long=True) if o not in before]
     print("[OK] 导入完成, 新增顶层节点 %d 个" % len([o for o in new if '|' in o and o.count('|') == 1]))
