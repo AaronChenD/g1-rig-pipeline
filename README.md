@@ -30,6 +30,9 @@
 ![G1 posed](docs/img/g1_inspire_posed.png)
 *同一骨架抬起双肩、弯曲手指后的点云投影——骨骼/蒙皮工作正常。*
 
+![G1 materials](docs/img/g1_materials_preview.png)
+*材质分配预览：白色外壳件 vs 深灰金属件（官方无贴图，脚本按 URDF 材质标签映射 + 自动 UV，见 FAQ Q11）。*
+
 ---
 
 ## 目录
@@ -181,6 +184,8 @@ scripts\convert_g1.bat C:\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_wit
 | `--usd-up` | `Y` | USD 上轴：`Y`（Maya 标准）/ `Z`（保持 URDF 原生） |
 | `--keep-urdf-orientation` | 关 | 默认把骨架转成 Maya 惯例（面朝 +Z） |
 | `--skip-links` | `force_sensor\|imu\|d435\|mid360` | 正则过滤噪声 link（传感器等） |
+| `--no-uv` | 关 | 默认自动展 UV（STL 无 UV，想贴图必须有；见 FAQ Q11） |
+| `--flat-colors` | 关 | 默认用白壳/深灰金属美化材质；此参数退回 URDF 原始纯色 |
 
 **导入后检查：**
 
@@ -369,7 +374,7 @@ Blender 官方从未内置 URDF 导入。本仓库脚本就是为 Blender 4.4~5.
 正常——机器人本来就是刚体连杆结构，每个 link 一块网格。渲染时接缝就是真实机械结构的位置。想要"一体化"皮肤需要自己重新平滑蒙皮（把相邻 link 权重做渐变过渡）。
 
 **Q7：材质只有白/深灰两色？**
-URDF 里 G1 就只定义了 `white` / `dark` 两个材质。想要最终效果需自己上材质/贴图（网格已按 link 分好，方便选区上材质）。
+这是官方 URDF 的定义（只有 `white`/`dark` 两个纯色）。脚本默认已替换为白壳+深灰金属预设并自动展 UV，详见 Q11。
 
 **Q8：`stl_import` 之后网格发黑/法线反？**
 个别 STL 有反法线，选中网格 Object → Shade Smooth + Mesh → Normals → Auto Smooth（脚本默认已做 40° auto smooth）。仍有问题就外面套个 Solidify/Normal 编辑。
@@ -379,6 +384,16 @@ URDF 里 G1 就只定义了 `white` / `dark` 两个材质。想要最终效果�
 
 **Q10：G1-D（轮式）、H1/H2 等其他宇树机型也能用吗？**
 能。脚本对任意 URDF 通用（G1-D 已实测：41 骨骼、轮子/升降柱正常）。H1/H2/Go2 等在 `unitree_ros/robots/` 下都有对应 `*_description`，用 sparse-checkout 把那个目录加进来即可。
+
+**Q11：没有材质贴图？官方提供了吗？**
+**官方确实没提供贴图**：URDF 里只定义了两个纯色材质（`white` = 0.7 灰、`dark` = 0.2 深灰），`meshes/` 目录全是 STL，没有任何贴图/法线/MTL 文件。脚本已做两层补强：
+1. **美化材质预设**（默认开启）：`white` → 哑光白壳（roughness 0.42），`dark` → 深灰金属（metallic 0.85 / roughness 0.30），观感接近真机；想严格用官方纯色加 `--flat-colors`；
+2. **自动展 UV**（默认开启，`--no-uv` 关闭）：STL 导入本来没有 UV，不展 UV 在 Maya/Substance 里根本没法贴图。脚本会做"三面投影 + 自动图集"（每个零件一个格子、格内按投影方向分 6 小格、零件间零重叠），UV 随 USD 导出到 Maya（`st` primvars，59/59 网格）。之后就可以在 Maya Hypershade 里连贴图，或扔进 Substance Painter 按 59 个部件分别上材质。
+
+想要现成的 PBR 贴图模型：社区有付费资源（如 Fab/Sketchfab 上 RandomRepresent 的 "Unirandom G1"，4K PBR 贴图 + 已绑定）；免费 AI 重建版本质量参差；宇树官方暂无发布。渲染级需求的常见做法：用本管线拿到干净绑定 + 自动 UV，贴图环节在 Substance/Maya 里完成。
+
+**Q12：USD 文件怎么变小？**
+带 UV 的 `.usda` 文本约 128 MB。把输出后缀改成 `.usdc`（二进制）约 1/3 大小，内容完全一致；`.usdz` 则是打包格式（单文件分发，Maya 2025 也能直接读）。
 
 ---
 

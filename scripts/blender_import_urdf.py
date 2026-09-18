@@ -52,6 +52,8 @@ CONFIG = {
     "skip_links": "force_sensor|imu|d435|mid360",  # regex; links to drop (noise)
     "face_maya": True,  # rotate rig so it faces +Z in Maya (Blender -Y forward)
     "auto_smooth": True,
+    "auto_uv": True,          # STL 没有 UV, 自动 Smart UV Project (想自己贴图必须有 UV)
+    "nice_materials": True,   # 官方无贴图; 用白壳/深灰金属预设替代 URDF 的两个纯色
 }
 
 # ----------------------------------------------------------------------------
@@ -281,8 +283,19 @@ def fresh_scene(robot_name):
     return coll, meshes_coll
 
 
-def urdf_material(urdf, vis_el, mesh_obj):
-    """Apply the <visual><material> color to a mesh (Principled BSDF)."""
+# "Nicer" shading presets keyed by URDF material name.
+# 官方 URDF 只有两个纯色 (white 0.7 / dark 0.2) 且没有任何贴图;
+# 这里把它们调成接近真机观感的材质 (哑光白壳 / 深灰金属), 纯着色器参数、不依赖贴图.
+_NICE_MATERIALS = {
+    "white": dict(base=(0.78, 0.79, 0.81), roughness=0.42, metallic=0.0),
+    "dark":  dict(base=(0.085, 0.09, 0.10), roughness=0.30, metallic=0.85),
+}
+
+
+def urdf_material(urdf, vis_el, mesh_obj, nice=True):
+    """Apply the <visual><material> color to a mesh (Principled BSDF).
+    nice=True 时用 _NICE_MATERIALS 的白壳/深灰金属预设 (官方无贴图, 观感更接近真机);
+    nice=False 时严格按 URDF 的 RGBA 纯色 + 默认粗糙度."""
     mat_el = vis_el.find("material")
     if mat_el is None:
         return
@@ -301,8 +314,14 @@ def urdf_material(urdf, vis_el, mesh_obj):
         mat.use_nodes = True
         bsdf = mat.node_tree.nodes.get("Principled BSDF")
         if bsdf:
-            bsdf.inputs["Base Color"].default_value = (rgba[0], rgba[1], rgba[2], 1.0)
-            bsdf.inputs["Roughness"].default_value = 0.55
+            preset = _NICE_MATERIALS.get(mat_el.get("name")) if nice else None
+            if preset:
+                bsdf.inputs["Base Color"].default_value = (*preset["base"], 1.0)
+                bsdf.inputs["Roughness"].default_value = preset["roughness"]
+                bsdf.inputs["Metallic"].default_value = preset["metallic"]
+            else:
+                bsdf.inputs["Base Color"].default_value = (rgba[0], rgba[1], rgba[2], 1.0)
+                bsdf.inputs["Roughness"].default_value = 0.55
     if mesh_obj.data.materials:
         mesh_obj.data.materials[0] = mat
     else:
@@ -465,7 +484,79 @@ def _ctx_override(**overrides):
     return bpy.context.temp_override(**overrides)
 
 
-def skin_meshes(urdf, keep, scale, arm_obj, meshes_coll, auto_smooth):
+def auto_uv(objects):
+    """自动展 UV: STL 网格天生没有 UV, 不展的话在 Maya / Substance 里没法贴图.
+    实现为"三面投影 (按面法线主方向分 6 个桶) + 自动图集": 每个零件占图集的一格,
+    格内再按投影方向分 3x2 小格, 互不重叠; 全部零件统一纹素密度.
+    (纯数据 API, 不依赖 bpy.ops, GUI / --background / bpy 模块结果一致)"""
+    import numpy as np
+    if not objects:
+        return
+    meshes = [o for o in objects if o.data and o.data.polygons]
+    if not meshes:
+        return
+    # 统一纹素密度: 每个零件按其世界空间包围盒对角线归一化
+    diags = {}
+    for o in meshes:
+        bb = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        diags[o.name] = max(max((bb[i] - bb[j]).length for i in range(8) for j in range(8)), 1e-6)
+    n = len(meshes)
+    cols = max(int(math.ceil(math.sqrt(n * 1.6))), 1)
+    rows = max(int(math.ceil(n / cols)), 1)
+    for idx, o in enumerate(meshes):
+        me = o.data
+        nverts = len(me.vertices)
+        co = np.empty(nverts * 3, dtype=np.float64)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(-1, 3)
+        npolys = len(me.polygons)
+        pn = np.empty(npolys * 3, dtype=np.float64)
+        me.polygons.foreach_get("normal", pn)
+        pn = pn.reshape(-1, 3)
+        totals = np.empty(npolys, dtype=np.int64)
+        me.polygons.foreach_get("loop_total", totals)
+        poly_of_loop = np.repeat(np.arange(npolys), totals)
+        lvi = np.empty(len(me.loops), dtype=np.int64)
+        me.loops.foreach_get("vertex_index", lvi)
+        an = np.abs(pn)
+        axis = np.argmax(an[poly_of_loop], axis=1)              # 0/1/2 主方向
+        sign = pn[poly_of_loop][np.arange(len(poly_of_loop)), axis] < 0
+        bucket = axis * 2 + sign.astype(int)                    # 0..5
+        vco = co[lvi]                                           # 每个循环的顶点坐标
+        # 三面投影 (带镜像修正, 让相对面纹理方向一致)
+        uv = np.empty((len(lvi), 2), dtype=np.float64)
+        for b in range(6):
+            m = bucket == b
+            if not m.any():
+                continue
+            x, y, z = vco[m, 0], vco[m, 1], vco[m, 2]
+            if b == 0:   uv[m, 0], uv[m, 1] = -y, z
+            elif b == 1: uv[m, 0], uv[m, 1] = y, z
+            elif b == 2: uv[m, 0], uv[m, 1] = x, z
+            elif b == 3: uv[m, 0], uv[m, 1] = -x, z
+            elif b == 4: uv[m, 0], uv[m, 1] = x, -y
+            else:        uv[m, 0], uv[m, 1] = x, y
+        # 归一化到零件自己的图集格 (cell), 格内 3x2 子格按投影方向
+        cell_w, cell_h = 1.0 / cols, 1.0 / rows
+        cx, cy = idx % cols, idx // cols
+        scale = 1.0 / diags[o.name]
+        for b in range(6):
+            m = bucket == b
+            if not m.any():
+                continue
+            u, v = uv[m, 0] * scale, uv[m, 1] * scale
+            u = u - u.min(); v = v - v.min()
+            span_u, span_v = max(u.max(), 1e-9), max(v.max(), 1e-9)
+            s = min((cell_w / 3.0 * 0.94) / span_u, (cell_h / 2.0 * 0.94) / span_v)
+            uv[m, 0] = cx * cell_w + (b % 3) * (cell_w / 3.0) + u * s + cell_w * 0.003
+            uv[m, 1] = cy * cell_h + (b // 3) * (cell_h / 2.0) + v * s + cell_h * 0.006
+        if me.uv_layers.active is None:
+            me.uv_layers.new(name="UVMap")
+        me.uv_layers.active.data.foreach_set("uv", uv.reshape(-1))
+        me.update()
+
+
+def skin_meshes(urdf, keep, scale, arm_obj, meshes_coll, auto_smooth, nice_materials=True, do_uv=True):
     """Import each kept link's visual meshes and bind them rigidly (weight 1.0)
     to the link's bone -> a proper UsdSkel setup that survives the USD trip."""
     created = []
@@ -498,7 +589,7 @@ def skin_meshes(urdf, keep, scale, arm_obj, meshes_coll, auto_smooth):
                     vg.add(idx, 1.0, "REPLACE")
                 mod = o.modifiers.new("Armature", "ARMATURE")
                 mod.object = arm_obj
-                urdf_material(urdf, vis, o)
+                urdf_material(urdf, vis, o, nice=nice_materials)
                 for c in list(bpy.data.collections):
                     try:
                         c.objects.unlink(o)
@@ -506,6 +597,8 @@ def skin_meshes(urdf, keep, scale, arm_obj, meshes_coll, auto_smooth):
                         pass
                 meshes_coll.objects.link(o)
                 created.append(o)
+    if do_uv and created:
+        auto_uv(created)
     if auto_smooth and created:
         for o in created:
             o.select_set(True)
@@ -680,6 +773,9 @@ def get_args():
     p.add_argument("--keep-urdf-orientation", action="store_true",
                    help="do not rotate the rig to face Maya's +Z (keeps URDF +X facing)")
     p.add_argument("--no-smooth", action="store_true")
+    p.add_argument("--no-uv", action="store_true", help="跳过自动展 UV (STL 默认无 UV)")
+    p.add_argument("--flat-colors", action="store_true",
+                   help="严格用 URDF 的两个纯色 (0.7 白 / 0.2 深灰), 不用美化材质预设")
     return p.parse_args(argv)
 
 
@@ -691,6 +787,7 @@ def main():
             "meta": args.meta or "", "render": args.render or "", "scale": args.scale,
             "usd_units": args.usd_units, "usd_up": args.usd_up, "skip_links": args.skip_links,
             "face_maya": not args.keep_urdf_orientation, "auto_smooth": not args.no_smooth,
+            "auto_uv": not args.no_uv, "nice_materials": not args.flat_colors,
         }
     else:
         cfg = dict(CONFIG)
@@ -720,10 +817,17 @@ def main():
 
     _coll, meshes_coll = fresh_scene(urdf.name)
     arm_obj, arm_data = build_armature(urdf, keep, cfg["scale"], urdf.name)
-    meshes = skin_meshes(urdf, keep, cfg["scale"], arm_obj, meshes_coll, cfg["auto_smooth"])
+    meshes = skin_meshes(urdf, keep, cfg["scale"], arm_obj, meshes_coll, cfg["auto_smooth"],
+                         cfg.get("nice_materials", True), cfg.get("auto_uv", True))
     if cfg.get("face_maya", True):
         apply_maya_facing(arm_obj)
     print("Built  : %d bones, %d mesh objects" % (len(arm_data.bones), len(meshes)))
+    n_uv = sum(1 for o in meshes if o.data.uv_layers.active is not None)
+    n_mat = len({o.data.materials[0].name for o in meshes if o.data.materials})
+    print(" Mats  : %d materials (URDF 无贴图, %s) | UV: %d/%d meshes unwrapped"
+          % (n_mat,
+             "美化预设" if cfg.get("nice_materials", True) else "URDF 纯色",
+             n_uv, len(meshes)))
 
     if meta_path:
         write_meta(urdf, keep, meta_path, cfg["usd_units"])
