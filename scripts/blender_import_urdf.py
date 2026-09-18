@@ -11,14 +11,13 @@ A) GUI (recommended for inspection):
    1. Open Blender 5.x  ->  "Scripting" workspace tab
    2. Open this file, edit the CONFIG block below
    3. Click "Run Script" (▶).  Results appear in the 3D viewport / System console.
+   (不会重置你当前打开的文件; 重复运行会自动清理上次生成的同名内容)
 
 B) Command line, with the blender binary:
    blender --background --python blender_import_urdf.py -- ^
        "unitree_ros/robots/g1_description/g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf" ^
        --blend "out/g1.blend" --usd "out/g1.usda" --meta "out/g1.json" --render "out/g1.png"
-
-C) Command line, with `pip install bpy` (Blender as a python module):
-   python blender_import_urdf.py <robot.urdf> --blend out/g1.blend --usd out/g1.usda
+   (注意 -- 分隔符不能少; 直接 `blender 脚本.py` 启动也能跑, 但推荐上面这种标准形式)
 
 The generated USD contains a UsdSkel skeleton + skinned meshes (exported in
 centimeters by default so it drops into Maya's default cm scene at true size).
@@ -235,8 +234,46 @@ def visual_center_world(urdf, link_name):
 # ----------------------------------------------------------------------------
 # Blender scene building
 # ----------------------------------------------------------------------------
+def cleanup_previous(robot_name):
+    """GUI 模式下只清理本脚本上次运行生成的内容 (同名 collection / 骨架 / 网格),
+    绝不动用户自己场景里的其他东西。"""
+    victims = []
+    coll = bpy.data.collections.get(robot_name)
+    mesh_coll = bpy.data.collections.get(robot_name + "_meshes")
+    for c in (coll, mesh_coll):
+        if c:
+            victims.extend(list(c.objects))
+    arm = bpy.data.objects.get(robot_name + "_skeleton")
+    if arm and arm not in victims:
+        victims.append(arm)
+    for o in victims:
+        data = o.data
+        try:
+            bpy.data.objects.remove(o, do_unlink=True)
+            if data is not None and data.users == 0:
+                if isinstance(data, bpy.types.Mesh):
+                    bpy.data.meshes.remove(data)
+                elif isinstance(data, bpy.types.Armature):
+                    bpy.data.armatures.remove(data)
+        except Exception:
+            pass
+    for c in (coll, mesh_coll):
+        if c:
+            try:
+                bpy.data.collections.remove(c)
+            except Exception:
+                pass
+
+
 def fresh_scene(robot_name):
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+    if bpy.app.background:
+        # 后台/批处理模式: 从空文件开始, 保证脚本可重复执行
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+    else:
+        # GUI 模式: 绝不重置用户当前打开的文件 (read_factory_settings 在 GUI /
+        # 启动脚本阶段执行会破坏上下文, 导致后续 "Context missing active object"),
+        # 只清理本脚本自己上次生成的同名内容
+        cleanup_previous(robot_name)
     coll = bpy.data.collections.new(robot_name)
     bpy.context.scene.collection.children.link(coll)
     meshes_coll = bpy.data.collections.new(robot_name + "_meshes")
@@ -292,6 +329,70 @@ def import_mesh_file(path):
     return [o for o in bpy.data.objects if o not in before]
 
 
+def _activate_object(obj):
+    """把 obj 设为上下文的活动对象, 并校验赋值真的生效。
+    (在 GUI / `blender 脚本.py` 启动阶段, 直接赋值偶尔会静默失效,
+    这是 mode_set 报 "Context missing active object" 的根源。)"""
+    ctx = bpy.context
+    try:
+        ctx.view_layer.objects.active = obj
+        if ctx.view_layer.objects.active == obj:
+            return True
+    except Exception:
+        pass
+    try:
+        ctx.view_layer.update()          # 同步一次视图层再试
+        ctx.view_layer.objects.active = obj
+        if ctx.view_layer.objects.active == obj:
+            return True
+    except Exception:
+        pass
+    try:
+        for vl in ctx.scene.view_layers:  # 逐个 view layer 都设一遍
+            vl.objects.active = obj
+        if ctx.view_layer.objects.active == obj:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _mode_set(obj, mode):
+    """带上下文兜底的 mode_set; 失败时给出中文指引。"""
+    if not _activate_object(obj):
+        raise RuntimeError(
+            "无法把骨架设为活动对象 (Blender 上下文异常)。\n"
+            "  推荐用法 A: 打开 Blender 界面 -> 顶部 Scripting 标签 -> Open 打开本脚本 -> Run Script\n"
+            "  推荐用法 B: blender --background --python blender_import_urdf.py -- <urdf路径> --usd 输出.usda"
+        )
+    try:
+        for o in list(bpy.context.selected_objects):
+            o.select_set(False)
+    except Exception:
+        pass
+    try:
+        obj.select_set(True)
+    except Exception:
+        pass
+    try:
+        bpy.ops.object.mode_set(mode=mode)
+        return
+    except RuntimeError:
+        pass
+    # 兜底: 显式上下文覆盖 (正常情况走不到这里)
+    with bpy.context.temp_override(object=obj, active_object=obj, selected_objects=[obj]):
+        try:
+            bpy.ops.object.mode_set(mode=mode)
+            return
+        except RuntimeError:
+            pass
+    raise RuntimeError(
+        "无法进入 %s 模式 (Context missing active object)。\n"
+        "  推荐用法 A: 打开 Blender 界面 -> 顶部 Scripting 标签 -> Open 打开本脚本 -> Run Script\n"
+        "  推荐用法 B: blender --background --python blender_import_urdf.py -- <urdf路径> --usd 输出.usda" % mode
+    )
+
+
 def build_armature(urdf, keep, scale, robot_name):
     arm_data = bpy.data.armatures.new(robot_name + "_skeleton")
     arm_obj = bpy.data.objects.new(robot_name + "_skeleton", arm_data)
@@ -324,8 +425,7 @@ def build_armature(urdf, keep, scale, robot_name):
         tails[name] = (head, tail)
 
     # ---- create bones --------------------------------------------------------
-    bpy.context.view_layer.objects.active = arm_obj
-    bpy.ops.object.mode_set(mode="EDIT")
+    _mode_set(arm_obj, "EDIT")
     eb = arm_data.edit_bones
     for name in keep:
         b = eb.new(name)
@@ -339,7 +439,7 @@ def build_armature(urdf, keep, scale, robot_name):
         par = urdf.joint_parent_link(j) if j is not None else None
         if par in eb:
             eb[name].parent = eb[par]
-    bpy.ops.object.mode_set(mode="OBJECT")
+    _mode_set(arm_obj, "OBJECT")
 
     # ---- joint metadata as bone custom properties ----------------------------
     for name in keep:
@@ -361,13 +461,8 @@ def build_armature(urdf, keep, scale, robot_name):
 
 
 def _ctx_override(**overrides):
-    """temp_override() on Blender 3.2+/4.x/5.x, with a legacy fallback."""
-    try:
-        return bpy.context.temp_override(**overrides)
-    except AttributeError:
-        class _Legacy(dict):
-            pass
-        return _Legacy(overrides)
+    """temp_override() context manager (Blender 3.2+)."""
+    return bpy.context.temp_override(**overrides)
 
 
 def skin_meshes(urdf, keep, scale, arm_obj, meshes_coll, auto_smooth):
@@ -634,8 +729,14 @@ def main():
         write_meta(urdf, keep, meta_path, cfg["usd_units"])
         print("Meta   :", meta_path)
     if blend_path:
-        bpy.ops.wm.save_as_mainfile(filepath=blend_path)
-        print("Blend  :", blend_path)
+        if cfg["blend"] or bpy.app.background:
+            # 显式指定了路径, 或后台批处理模式 -> 自动保存
+            bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+            print("Blend  :", blend_path)
+        else:
+            # GUI 模式且未显式指定: 不往 URDF 所在目录偷偷写 12MB 文件
+            print("[提示] GUI 模式默认不自动保存 .blend; 如需保存请在 CONFIG['blend'] 填路径,")
+            print("       或在 Blender 里 File > Save As 手动保存 (默认建议路径: %s)" % blend_path)
     if usd_path:
         export_usd(usd_path, cfg["usd_units"], cfg.get("usd_up", "Y"))
         print("USD    : %s (units=%s, up=%s)" % (usd_path, cfg["usd_units"], cfg.get("usd_up", "Y")))

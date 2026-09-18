@@ -157,6 +157,8 @@ CONFIG = {
 
 5. 点 **▶ Run Script**。3D 视图会出现完整的 G1（骨骼显示在体前，`Show In Front` 已开）。
 
+> 说明：GUI 模式**不会重置/清空你当前打开的文件**（机器人放在新建的 collection 里）；重复运行会自动清理上一次生成的同名内容。默认也不自动保存 `.blend`（控制台会打印建议路径），USD/JSON 照常自动导出。
+
 **命令行用法（后台批处理，不开界面）：**
 
 ```bat
@@ -342,6 +344,11 @@ python -m mujoco.viewer
 ---
 
 ## 常见问题 FAQ
+
+**Q0：报错 `RuntimeError: Operator bpy.ops.object.mode_set.poll() Context missing active object`**
+旧版脚本在 GUI/启动阶段会先"重置为空文件"，个别上下文里这会让"活动对象"赋值失效，导致进不了骨骼编辑模式。**2025-09 修复版已彻底解决**（GUI 模式不再重置文件，只自动清理上次生成的内容；并加入活动对象校验 + 中文报错指引）。请从 PR #1 重新下载 `blender_import_urdf.py` 覆盖旧文件。推荐两种运行方式：
+- Blender 界面 → **Scripting** 标签 → Open 打开脚本 → Run Script（不会动你当前打开的文件）
+- 命令行标准形式：`blender --background --python blender_import_urdf.py -- <urdf路径> --usd 输出.usda`（注意 `--` 不能少；直接 `blender 脚本.py` 也能跑，但不推荐）
 
 **Q1：Blender 5.0 还没有 URDF 导入插件怎么办？**
 Blender 官方从未内置 URDF 导入。本仓库脚本就是为 Blender 4.4~5.x 写的（已在 5.0.1 / 4.5 LTS 实测）；要图形界面插件可用 LinkForge（官方 Extensions 平台，支持到 5.x）。
