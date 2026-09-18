@@ -991,6 +991,34 @@ def patch_usda_upaxis_y(path):
         return False
 
 
+def patch_usda_rest_to_bind(path):
+    """把 .usda 里 Skeleton 的 restTransforms 数组替换为 bindTransforms 数组。
+
+    Blender 的 USD 导出器把 restTransforms 写成了父级相对的局部变换, 而 USD 规范
+    要求它与 bindTransforms 同为骨架空间绝对变换。Houdini 的 USD Character Import
+    对 模型/骨骼 两个输出按规范消费 rest (动画输出用 bind) —— 局部值被当绝对值,
+    骨架全部缩回原点附近 (表现为 pelvis 在原点 + 差 90° 朝向)。绑定姿势导出的
+    文件 rest == bind 本就是应有状态, 这里直接对齐。仅文本替换, 无需 pxr。"""
+    import re
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        mb = re.search(r"^[ \t]*uniform matrix4d\[\] bindTransforms = (\[.*\])[ \t]*$", text, re.M)
+        mr = re.search(r"^[ \t]*uniform matrix4d\[\] restTransforms = (\[.*\])[ \t]*$", text, re.M)
+        if not mb or not mr:
+            print("  [warn] %s: 未找到 bind/restTransforms 行, 跳过 rest=bind 补丁" % path)
+            return False
+        if mb.group(1) == mr.group(1):
+            return True    # 本来就一致
+        new = text[:mr.start(1)] + mb.group(1) + text[mr.end(1):]
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new)
+        return True
+    except Exception as e:
+        print("  [warn] rest=bind 补丁失败 (%s): %s" % (path, e))
+        return False
+
+
 def export_houdini_usd(path, urdf, keep, cfg, lift):
     """Houdini 专用导出: 数据直接烘成 Y-up, SkelRoot 不带任何变换。
 
@@ -1016,6 +1044,7 @@ def export_houdini_usd(path, urdf, keep, cfg, lift):
     # armature 对象保持恒等变换 (朝向已烘进 world, 不调 apply_maya_facing)
     export_usd(path, "m", "Y", convert_orientation=False)
     patch_usda_upaxis_y(path)
+    patch_usda_rest_to_bind(path)
 
     # 恢复常规 Z-up 场景 (GUI 用户看到的仍是标准结果; .blend 早已保存, 不受影响)
     urdf.world.clear()
