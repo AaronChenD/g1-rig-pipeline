@@ -401,6 +401,19 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 **Q14：Maya 导入报 `Ill-formed SdfPath` / `Invalid prim name '鍘熺悊鍖朹BSDF'`？**
 **中文版 Blender 的坑**：中文界面下 Principled BSDF 节点名是 `原理化BSDF`，Blender 导出 USD 时把它写成了 Shader prim 名；Maya（Windows/GBK 环境）解析非 ASCII prim 名失败，整个文件导入报错（乱码 `鍘熺悊鍖朹BSDF` 就是 UTF-8 的"原理化BSDF"被按 GBK 读出来的样子）。**2025-09-18 后的脚本已修复**：节点按类型查找 + 强制所有节点名 ASCII。用新版脚本在 Blender 里重新 Run Script（自动覆盖旧 .usda）即可。不想重跑的话，用 VSCode/Notepad++ 打开 .usda，把 `原理化BSDF` 全部替换为 `Principled_BSDF`（保持 UTF-8 保存）也能修好。
 
+**Q15：Houdini 21 怎么用这个 USD？USD Character Import 导入后方向/大小都不对？**
+可以加载，但注意单位。这份给 Maya 的 USD 是**厘米制**（metersPerUnit=0.01），而 Houdini/Solaris 原生是**米**；OpenUSD 引用时**不做自动单位换算**，所以厘米文件进 Houdini 会差 100 倍。正确姿势：
+
+1. **给 Houdini 单独出一份米制 USD**（推荐，一次到位）：
+   ```bat
+   scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf D:\BlenderPro\G1 "" m
+   ```
+   生成 `..._m.usda`（实测 metersPerUnit=1.0、整机 1.323 m、Y-up，与 Houdini 完全同调；`_m` 后缀不会覆盖 Maya 用的厘米版）。
+2. **Solaris（LOPs）直接加载**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `.usda` → 视口所见即所得（Hydra 直接渲染 UsdSkel，无需转换）。
+3. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，多个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的。另外一定要打开它的 **Convert Units** 参数（SideFX 官方文档明确：大小差 100 倍就是米/厘米单位问题，开它解决）。用米制文件 + Convert Units 后大小方向即恢复正常；若骨骼和网格仍差一个 90°，是节点丢根变换（`/root` 上有 -90°X 的 Z-up→Y-up 转换旋转）——给错位的那一路加个 Transform SOP 转 90° 即可对齐。
+4. 相关节点：`USD Animation Import`（只导骨骼+动画）、`USD Skin Import`（只导蒙皮权重）。
+
+
 
 ---
 
