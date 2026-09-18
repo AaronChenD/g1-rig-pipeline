@@ -1,0 +1,1584 @@
+{
+  "robot": "g1_29dof_rev_1_0_with_inspire_hand_DFQ",
+  "source_urdf": "g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf",
+  "generator": "g1-rig-pipeline / blender_import_urdf.py",
+  "units": "URDF native: meters, Z-up.  USD export: centimeters, Y-up.",
+  "root_link": "pelvis",
+  "num_links_total": 63,
+  "num_joints_total": 62,
+  "num_joints_movable": 53,
+  "bones": [
+    "L_hand_base_link",
+    "L_index_intermediate",
+    "L_index_proximal",
+    "L_middle_intermediate",
+    "L_middle_proximal",
+    "L_pinky_intermediate",
+    "L_pinky_proximal",
+    "L_ring_intermediate",
+    "L_ring_proximal",
+    "L_thumb_distal",
+    "L_thumb_intermediate",
+    "L_thumb_proximal",
+    "L_thumb_proximal_base",
+    "R_hand_base_link",
+    "R_index_intermediate",
+    "R_index_proximal",
+    "R_middle_intermediate",
+    "R_middle_proximal",
+    "R_pinky_intermediate",
+    "R_pinky_proximal",
+    "R_ring_intermediate",
+    "R_ring_proximal",
+    "R_thumb_distal",
+    "R_thumb_intermediate",
+    "R_thumb_proximal",
+    "R_thumb_proximal_base",
+    "head_link",
+    "left_ankle_pitch_link",
+    "left_ankle_roll_link",
+    "left_elbow_link",
+    "left_hip_pitch_link",
+    "left_hip_roll_link",
+    "left_hip_yaw_link",
+    "left_knee_link",
+    "left_shoulder_pitch_link",
+    "left_shoulder_roll_link",
+    "left_shoulder_yaw_link",
+    "left_wrist_pitch_link",
+    "left_wrist_roll_link",
+    "left_wrist_yaw_link",
+    "logo_link",
+    "pelvis",
+    "pelvis_contour_link",
+    "right_ankle_pitch_link",
+    "right_ankle_roll_link",
+    "right_elbow_link",
+    "right_hip_pitch_link",
+    "right_hip_roll_link",
+    "right_hip_yaw_link",
+    "right_knee_link",
+    "right_shoulder_pitch_link",
+    "right_shoulder_roll_link",
+    "right_shoulder_yaw_link",
+    "right_wrist_pitch_link",
+    "right_wrist_roll_link",
+    "right_wrist_yaw_link",
+    "torso_link",
+    "waist_roll_link",
+    "waist_yaw_link"
+  ],
+  "joints": [
+    {
+      "bone": "L_hand_base_link",
+      "joint": "L_base_link_joint",
+      "type": "fixed",
+      "parent_bone": "left_wrist_yaw_link",
+      "origin_xyz_m": [
+        0.0415,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        1.570796
+      ]
+    },
+    {
+      "bone": "L_index_intermediate",
+      "joint": "L_index_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "L_index_proximal",
+      "origin_xyz_m": [
+        -0.002423,
+        -0.032041,
+        -0.001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_index_proximal",
+      "joint": "L_index_proximal_joint",
+      "type": "revolute",
+      "parent_bone": "L_hand_base_link",
+      "origin_xyz_m": [
+        0.000285,
+        -0.13653,
+        0.032268
+      ],
+      "origin_rpy_rad": [
+        -0.034907,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_middle_intermediate",
+      "joint": "L_middle_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "L_middle_proximal",
+      "origin_xyz_m": [
+        -0.002423,
+        -0.032041,
+        -0.001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_middle_proximal",
+      "joint": "L_middle_proximal_joint",
+      "type": "revolute",
+      "parent_bone": "L_hand_base_link",
+      "origin_xyz_m": [
+        0.000285,
+        -0.1371,
+        0.01295
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_pinky_intermediate",
+      "joint": "L_pinky_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "L_pinky_proximal",
+      "origin_xyz_m": [
+        -0.002423,
+        -0.032041,
+        -0.001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_pinky_proximal",
+      "joint": "L_pinky_proximal_joint",
+      "type": "revolute",
+      "parent_bone": "L_hand_base_link",
+      "origin_xyz_m": [
+        0.000285,
+        -0.13571,
+        -0.025488
+      ],
+      "origin_rpy_rad": [
+        0.10472,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_ring_intermediate",
+      "joint": "L_ring_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "L_ring_proximal",
+      "origin_xyz_m": [
+        -0.002423,
+        -0.032041,
+        -0.001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_ring_proximal",
+      "joint": "L_ring_proximal_joint",
+      "type": "revolute",
+      "parent_bone": "L_hand_base_link",
+      "origin_xyz_m": [
+        0.000285,
+        -0.13691,
+        -0.006287
+      ],
+      "origin_rpy_rad": [
+        0.05236,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_thumb_distal",
+      "joint": "L_thumb_distal_joint",
+      "type": "revolute",
+      "parent_bone": "L_thumb_intermediate",
+      "origin_xyz_m": [
+        0.020248,
+        -0.010156,
+        -0.0012
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.2,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_thumb_intermediate",
+      "joint": "L_thumb_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "L_thumb_proximal",
+      "origin_xyz_m": [
+        0.04407,
+        -0.034553,
+        -0.0008
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 0.8,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_thumb_proximal",
+      "joint": "L_thumb_proximal_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "L_thumb_proximal_base",
+      "origin_xyz_m": [
+        0.009987,
+        0.009824,
+        -0.0089
+      ],
+      "origin_rpy_rad": [
+        -1.5708,
+        0.0,
+        0.16939
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": -0.1,
+        "upper_rad": 0.6,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "L_thumb_proximal_base",
+      "joint": "L_thumb_proximal_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "L_hand_base_link",
+      "origin_xyz_m": [
+        -0.01696,
+        -0.0691,
+        0.02045
+      ],
+      "origin_rpy_rad": [
+        1.5708,
+        -1.5708,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -0.1,
+        "upper_rad": 1.3,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_hand_base_link",
+      "joint": "R_base_link_joint",
+      "type": "fixed",
+      "parent_bone": "right_wrist_yaw_link",
+      "origin_xyz_m": [
+        0.0415,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        3.141593,
+        0.0,
+        -1.570796
+      ]
+    },
+    {
+      "bone": "R_index_intermediate",
+      "joint": "R_index_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "R_index_proximal",
+      "origin_xyz_m": [
+        -0.002614,
+        0.032026,
+        -0.001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_index_proximal",
+      "joint": "R_index_proximal_joint",
+      "type": "revolute",
+      "parent_bone": "R_hand_base_link",
+      "origin_xyz_m": [
+        0.000285,
+        -0.13653,
+        -0.032268
+      ],
+      "origin_rpy_rad": [
+        -3.1067,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_middle_intermediate",
+      "joint": "R_middle_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "R_middle_proximal",
+      "origin_xyz_m": [
+        -0.002423,
+        0.032041,
+        -0.001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_middle_proximal",
+      "joint": "R_middle_proximal_joint",
+      "type": "revolute",
+      "parent_bone": "R_hand_base_link",
+      "origin_xyz_m": [
+        0.000285,
+        -0.1371,
+        -0.01295
+      ],
+      "origin_rpy_rad": [
+        -3.1416,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_pinky_intermediate",
+      "joint": "R_pinky_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "R_pinky_proximal",
+      "origin_xyz_m": [
+        -0.002423,
+        0.032041,
+        -0.001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_pinky_proximal",
+      "joint": "R_pinky_proximal_joint",
+      "type": "revolute",
+      "parent_bone": "R_hand_base_link",
+      "origin_xyz_m": [
+        0.000285,
+        -0.13571,
+        0.025488
+      ],
+      "origin_rpy_rad": [
+        3.0369,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_ring_intermediate",
+      "joint": "R_ring_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "R_ring_proximal",
+      "origin_xyz_m": [
+        -0.002423,
+        0.032041,
+        -0.001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_ring_proximal",
+      "joint": "R_ring_proximal_joint",
+      "type": "revolute",
+      "parent_bone": "R_hand_base_link",
+      "origin_xyz_m": [
+        0.000285,
+        -0.13691,
+        0.006287
+      ],
+      "origin_rpy_rad": [
+        3.0892,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.7,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_thumb_distal",
+      "joint": "R_thumb_distal_joint",
+      "type": "revolute",
+      "parent_bone": "R_thumb_intermediate",
+      "origin_xyz_m": [
+        0.020248,
+        0.010156,
+        -0.0012
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 1.2,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_thumb_intermediate",
+      "joint": "R_thumb_intermediate_joint",
+      "type": "revolute",
+      "parent_bone": "R_thumb_proximal",
+      "origin_xyz_m": [
+        0.04407,
+        0.034553,
+        -0.0008
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": 0.0,
+        "upper_rad": 0.8,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_thumb_proximal",
+      "joint": "R_thumb_proximal_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "R_thumb_proximal_base",
+      "origin_xyz_m": [
+        -0.00881,
+        0.010892,
+        -0.00925
+      ],
+      "origin_rpy_rad": [
+        1.5708,
+        0.0,
+        2.8587
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -0.1,
+        "upper_rad": 0.6,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "R_thumb_proximal_base",
+      "joint": "R_thumb_proximal_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "R_hand_base_link",
+      "origin_xyz_m": [
+        -0.01696,
+        -0.0691,
+        -0.02045
+      ],
+      "origin_rpy_rad": [
+        1.5708,
+        -1.5708,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        -1.0
+      ],
+      "limits": {
+        "lower_rad": -0.1,
+        "upper_rad": 1.3,
+        "effort_nm": 1.0,
+        "velocity_rad_s": 0.5
+      }
+    },
+    {
+      "bone": "head_link",
+      "joint": "head_joint",
+      "type": "fixed",
+      "parent_bone": "torso_link",
+      "origin_xyz_m": [
+        0.003964,
+        0.0,
+        -0.044
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "bone": "left_ankle_pitch_link",
+      "joint": "left_ankle_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "left_knee_link",
+      "origin_xyz_m": [
+        0.0,
+        -9.4e-05,
+        -0.30001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.87267,
+        "upper_rad": 0.5236,
+        "effort_nm": 35.0,
+        "velocity_rad_s": 30.0
+      }
+    },
+    {
+      "bone": "left_ankle_roll_link",
+      "joint": "left_ankle_roll_joint",
+      "type": "revolute",
+      "parent_bone": "left_ankle_pitch_link",
+      "origin_xyz_m": [
+        0.0,
+        0.0,
+        -0.017558
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.2618,
+        "upper_rad": 0.2618,
+        "effort_nm": 35.0,
+        "velocity_rad_s": 30.0
+      }
+    },
+    {
+      "bone": "left_elbow_link",
+      "joint": "left_elbow_joint",
+      "type": "revolute",
+      "parent_bone": "left_shoulder_yaw_link",
+      "origin_xyz_m": [
+        0.015783,
+        0.0,
+        -0.080518
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -1.0472,
+        "upper_rad": 2.0944,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "left_hip_pitch_link",
+      "joint": "left_hip_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "pelvis",
+      "origin_xyz_m": [
+        0.0,
+        0.064452,
+        -0.1027
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -2.5307,
+        "upper_rad": 2.8798,
+        "effort_nm": 88.0,
+        "velocity_rad_s": 32.0
+      }
+    },
+    {
+      "bone": "left_hip_roll_link",
+      "joint": "left_hip_roll_joint",
+      "type": "revolute",
+      "parent_bone": "left_hip_pitch_link",
+      "origin_xyz_m": [
+        0.0,
+        0.052,
+        -0.030465
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        -0.1749,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.5236,
+        "upper_rad": 2.9671,
+        "effort_nm": 139.0,
+        "velocity_rad_s": 20.0
+      }
+    },
+    {
+      "bone": "left_hip_yaw_link",
+      "joint": "left_hip_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "left_hip_roll_link",
+      "origin_xyz_m": [
+        0.025001,
+        0.0,
+        -0.12412
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -2.7576,
+        "upper_rad": 2.7576,
+        "effort_nm": 88.0,
+        "velocity_rad_s": 32.0
+      }
+    },
+    {
+      "bone": "left_knee_link",
+      "joint": "left_knee_joint",
+      "type": "revolute",
+      "parent_bone": "left_hip_yaw_link",
+      "origin_xyz_m": [
+        -0.078273,
+        0.002149,
+        -0.17734
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.1749,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.087267,
+        "upper_rad": 2.8798,
+        "effort_nm": 139.0,
+        "velocity_rad_s": 20.0
+      }
+    },
+    {
+      "bone": "left_shoulder_pitch_link",
+      "joint": "left_shoulder_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "torso_link",
+      "origin_xyz_m": [
+        0.003956,
+        0.10022,
+        0.24778
+      ],
+      "origin_rpy_rad": [
+        0.27931,
+        5.5e-05,
+        -0.000192
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -3.0892,
+        "upper_rad": 2.6704,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "left_shoulder_roll_link",
+      "joint": "left_shoulder_roll_joint",
+      "type": "revolute",
+      "parent_bone": "left_shoulder_pitch_link",
+      "origin_xyz_m": [
+        0.0,
+        0.038,
+        -0.013831
+      ],
+      "origin_rpy_rad": [
+        -0.27925,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -1.5882,
+        "upper_rad": 2.2515,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "left_shoulder_yaw_link",
+      "joint": "left_shoulder_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "left_shoulder_roll_link",
+      "origin_xyz_m": [
+        0.0,
+        0.00624,
+        -0.1032
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -2.618,
+        "upper_rad": 2.618,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "left_wrist_pitch_link",
+      "joint": "left_wrist_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "left_wrist_roll_link",
+      "origin_xyz_m": [
+        0.038,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -1.614429558,
+        "upper_rad": 1.614429558,
+        "effort_nm": 5.0,
+        "velocity_rad_s": 22.0
+      }
+    },
+    {
+      "bone": "left_wrist_roll_link",
+      "joint": "left_wrist_roll_joint",
+      "type": "revolute",
+      "parent_bone": "left_elbow_link",
+      "origin_xyz_m": [
+        0.1,
+        0.001888,
+        -0.01
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -1.972222054,
+        "upper_rad": 1.972222054,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "left_wrist_yaw_link",
+      "joint": "left_wrist_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "left_wrist_pitch_link",
+      "origin_xyz_m": [
+        0.046,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -1.614429558,
+        "upper_rad": 1.614429558,
+        "effort_nm": 5.0,
+        "velocity_rad_s": 22.0
+      }
+    },
+    {
+      "bone": "logo_link",
+      "joint": "logo_joint",
+      "type": "fixed",
+      "parent_bone": "torso_link",
+      "origin_xyz_m": [
+        0.003964,
+        0.0,
+        -0.044
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "bone": "pelvis_contour_link",
+      "joint": "pelvis_contour_joint",
+      "type": "fixed",
+      "parent_bone": "pelvis",
+      "origin_xyz_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "bone": "right_ankle_pitch_link",
+      "joint": "right_ankle_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "right_knee_link",
+      "origin_xyz_m": [
+        0.0,
+        9.4e-05,
+        -0.30001
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.87267,
+        "upper_rad": 0.5236,
+        "effort_nm": 35.0,
+        "velocity_rad_s": 30.0
+      }
+    },
+    {
+      "bone": "right_ankle_roll_link",
+      "joint": "right_ankle_roll_joint",
+      "type": "revolute",
+      "parent_bone": "right_ankle_pitch_link",
+      "origin_xyz_m": [
+        0.0,
+        0.0,
+        -0.017558
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.2618,
+        "upper_rad": 0.2618,
+        "effort_nm": 35.0,
+        "velocity_rad_s": 30.0
+      }
+    },
+    {
+      "bone": "right_elbow_link",
+      "joint": "right_elbow_joint",
+      "type": "revolute",
+      "parent_bone": "right_shoulder_yaw_link",
+      "origin_xyz_m": [
+        0.015783,
+        0.0,
+        -0.080518
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -1.0472,
+        "upper_rad": 2.0944,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "right_hip_pitch_link",
+      "joint": "right_hip_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "pelvis",
+      "origin_xyz_m": [
+        0.0,
+        -0.064452,
+        -0.1027
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -2.5307,
+        "upper_rad": 2.8798,
+        "effort_nm": 88.0,
+        "velocity_rad_s": 32.0
+      }
+    },
+    {
+      "bone": "right_hip_roll_link",
+      "joint": "right_hip_roll_joint",
+      "type": "revolute",
+      "parent_bone": "right_hip_pitch_link",
+      "origin_xyz_m": [
+        0.0,
+        -0.052,
+        -0.030465
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        -0.1749,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -2.9671,
+        "upper_rad": 0.5236,
+        "effort_nm": 139.0,
+        "velocity_rad_s": 20.0
+      }
+    },
+    {
+      "bone": "right_hip_yaw_link",
+      "joint": "right_hip_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "right_hip_roll_link",
+      "origin_xyz_m": [
+        0.025001,
+        0.0,
+        -0.12412
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -2.7576,
+        "upper_rad": 2.7576,
+        "effort_nm": 88.0,
+        "velocity_rad_s": 32.0
+      }
+    },
+    {
+      "bone": "right_knee_link",
+      "joint": "right_knee_joint",
+      "type": "revolute",
+      "parent_bone": "right_hip_yaw_link",
+      "origin_xyz_m": [
+        -0.078273,
+        -0.002149,
+        -0.17734
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.1749,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.087267,
+        "upper_rad": 2.8798,
+        "effort_nm": 139.0,
+        "velocity_rad_s": 20.0
+      }
+    },
+    {
+      "bone": "right_shoulder_pitch_link",
+      "joint": "right_shoulder_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "torso_link",
+      "origin_xyz_m": [
+        0.003956,
+        -0.10021,
+        0.24778
+      ],
+      "origin_rpy_rad": [
+        -0.27931,
+        5.5e-05,
+        0.000192
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -3.0892,
+        "upper_rad": 2.6704,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "right_shoulder_roll_link",
+      "joint": "right_shoulder_roll_joint",
+      "type": "revolute",
+      "parent_bone": "right_shoulder_pitch_link",
+      "origin_xyz_m": [
+        0.0,
+        -0.038,
+        -0.013831
+      ],
+      "origin_rpy_rad": [
+        0.27925,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -2.2515,
+        "upper_rad": 1.5882,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "right_shoulder_yaw_link",
+      "joint": "right_shoulder_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "right_shoulder_roll_link",
+      "origin_xyz_m": [
+        0.0,
+        -0.00624,
+        -0.1032
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -2.618,
+        "upper_rad": 2.618,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "right_wrist_pitch_link",
+      "joint": "right_wrist_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "right_wrist_roll_link",
+      "origin_xyz_m": [
+        0.038,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -1.614429558,
+        "upper_rad": 1.614429558,
+        "effort_nm": 5.0,
+        "velocity_rad_s": 22.0
+      }
+    },
+    {
+      "bone": "right_wrist_roll_link",
+      "joint": "right_wrist_roll_joint",
+      "type": "revolute",
+      "parent_bone": "right_elbow_link",
+      "origin_xyz_m": [
+        0.1,
+        -0.001888,
+        -0.01
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -1.972222054,
+        "upper_rad": 1.972222054,
+        "effort_nm": 25.0,
+        "velocity_rad_s": 37.0
+      }
+    },
+    {
+      "bone": "right_wrist_yaw_link",
+      "joint": "right_wrist_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "right_wrist_pitch_link",
+      "origin_xyz_m": [
+        0.046,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -1.614429558,
+        "upper_rad": 1.614429558,
+        "effort_nm": 5.0,
+        "velocity_rad_s": 22.0
+      }
+    },
+    {
+      "bone": "torso_link",
+      "joint": "waist_pitch_joint",
+      "type": "revolute",
+      "parent_bone": "waist_roll_link",
+      "origin_xyz_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.52,
+        "upper_rad": 0.52,
+        "effort_nm": 35.0,
+        "velocity_rad_s": 30.0
+      }
+    },
+    {
+      "bone": "waist_roll_link",
+      "joint": "waist_roll_joint",
+      "type": "revolute",
+      "parent_bone": "waist_yaw_link",
+      "origin_xyz_m": [
+        -0.003964,
+        0.0,
+        0.044
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "limits": {
+        "lower_rad": -0.52,
+        "upper_rad": 0.52,
+        "effort_nm": 35.0,
+        "velocity_rad_s": 30.0
+      }
+    },
+    {
+      "bone": "waist_yaw_link",
+      "joint": "waist_yaw_joint",
+      "type": "revolute",
+      "parent_bone": "pelvis",
+      "origin_xyz_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "origin_rpy_rad": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis_in_child_frame": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "limits": {
+        "lower_rad": -2.618,
+        "upper_rad": 2.618,
+        "effort_nm": 88.0,
+        "velocity_rad_s": 32.0
+      }
+    }
+  ]
+}
