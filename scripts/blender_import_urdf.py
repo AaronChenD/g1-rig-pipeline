@@ -21,14 +21,15 @@ B) Command line, with the blender binary:
 
 USD 输出 (默认一次导出三份, 按 DCC 各取所需, 无需再手工换单位/轴向):
    <name>.usda          Maya    — cm + Y-up, 面向 +Z (Maya 标准, 主文件名不变)
-   <name>_houdini.usda  Houdini — m  + Y-up (Houdini 原生米制, 不用再开 Convert Units)
+   <name>_houdini.usda  Houdini — m  + Y-up, 数据烘成 Y-up/SkelRoot 无变换
+                          (USD Character Import 的 模型/骨骼/动画 三个输出方向全一致)
    <name>_ue.usda       UE      — cm + Z-up, 面向 +X (UE 的 Z-up/厘米/前向惯例, 免转换)
    (--usd-variants maya 可只导主文件; 后缀自动跟随 .usda/.usdc/.usdz 扩展名)
 
-绑定姿势与摆位 (默认, 面向动捕重定向):
-   T-Pose 起手 (双肩 roll ±90° 水平外展, --pose zero 可退回 URDF 零位) + 双脚贴地
-   (脚底抬到世界 Z=0, pelvis 在 Z≈0.79 m; --no-ground 可退回 URDF 原生 pelvis 原点)。
-   T-Pose 偏移量记录在 meta JSON 的 pose.joint_offsets_deg (机器人真值回放时补偿)。
+绑定姿势与摆位 (默认, 与官方一致):
+   URDF 官方零位 (手臂自然下垂) + 双脚贴地 (脚底抬到世界 Z=0, pelvis 在 Z≈0.79 m;
+   --no-ground 可退回 URDF 原生 pelvis 原点)。动捕重定向偏好 T-Pose 起手的话加
+   --pose tpose (双肩 roll ±90° 外展, 偏移量记录在 meta JSON 的 pose.joint_offsets_deg)。
 
 The generated USD contains a UsdSkel skeleton + skinned meshes (exported in
 centimeters by default so it drops into Maya's default cm scene at true size).
@@ -63,8 +64,8 @@ CONFIG = {
     "usd_variants": "maya,houdini,ue",  # 自动导出的 DCC 变体 (逗号分隔): maya / houdini / ue
     "skip_links": "force_sensor|imu|d435|mid360",  # regex; links to drop (noise)
     "face_maya": True,  # rotate rig so it faces +Z in Maya (Blender -Y forward)
-    "pose": "tpose",    # 绑定姿势: "tpose" = 肩 roll ±90° 水平外展 (动捕重定向标准起手),
-                        #            "zero" = URDF 官方零位 (手臂下垂, 机器人真值回放用)
+    "pose": "zero",    # 绑定姿势: "zero" = URDF 官方零位 (默认, 手臂下垂),
+                        #            "tpose" = 肩 roll ±90° 水平外展 (动捕重定向可选起手)
     "ground": True,     # 双脚贴地 (脚底抬到世界 Z=0; False = pelvis 在原点, URDF 原生)
     "auto_smooth": True,
     "auto_uv": True,          # STL 没有 UV, 自动 Smart UV Project (想自己贴图必须有 UV)
@@ -280,12 +281,12 @@ def mesh_world_bbox(urdf, link_name):
     return (mn, mx) if got else None
 
 
-def bone_head_position(urdf, name):
-    """骨骼 head 的世界位置 (URDF 系)。
+def bone_head_position(urdf, name, up):
+    """骨骼 head 的世界位置 (URDF 系); up = 当前构建世界的"上"方向 (Z-up 构建=(0,0,1))。
     revolute/continuous/prismatic 一律用关节原点 (动画轴语义的唯一保证)。
     fixed 关节: 宇树部分 STL 是"全局装配坐标"风格 (head_link/logo_link 的
     关节原点被拉回骨盆), 原点落在 mesh bbox 之外 -> 改用几何锚点
-    (bbox 底面中心, 即脖子根/零件根部), 让骨头回到零件上。fixed 无动画,
+    (bbox 沿"上"轴的底面中心, 即脖子根/零件根部), 让骨头回到零件上。fixed 无动画,
     挪动零风险; revolute 即使原点略偏也绝不能挪 (官方仿真轴就在那)。"""
     jpos = urdf.world[name].translation
     j = urdf.joint_by_child.get(name)
@@ -297,7 +298,8 @@ def bone_head_position(urdf, name):
             pad = 0.03
             outside = any(jpos[i] < mn[i] - pad or jpos[i] > mx[i] + pad for i in range(3))
             if outside:
-                anchor = Vector(((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mn.z))
+                center = (mn + mx) * 0.5
+                anchor = center - up * ((mx - mn) * 0.5).dot(up)   # 底面中心 (沿 up 轴)
                 return anchor, True
     return jpos, False
 
@@ -576,11 +578,12 @@ HIK_MAPPING = [
 ]
 
 
-def add_hik_helper_bones(urdf, arm_data, scale):
+def add_hik_helper_bones(urdf, arm_data, scale, up, fwd):
     """为 MotionBuilder/Maya HumanIK 补 3 根零权重虚拟骨: 颈椎 + 双脚尖.
     G1 的 15 个 HIK 必需节点都有真实骨骼, 但 Neck 能让头颈重定向更平滑,
     ToeBase 能让 HIK 的脚部地板接触 (floor contact) / foot roll 生效.
-    虚拟骨不绑任何网格顶点 -> 之后删除它们对模型零影响."""
+    虚拟骨不绑任何网格顶点 -> 之后删除它们对模型零影响.
+    up/fwd = 当前构建世界的"上/前"方向 (由根 link 的 world 矩阵推导, Z-up/Y-up 通用)."""
     eb = arm_data.edit_bones
     helpers = []
     # --- Neck: 插在 torso 与 head 之间 (head 骨头已按几何锚点放在脖子根) ---
@@ -589,27 +592,26 @@ def add_hik_helper_bones(urdf, arm_data, scale):
     if head_bone is not None and torso_bone is not None:
         neck = eb.new("neck_link")
         p1 = head_bone.head.copy()                    # 脖子根 (几何锚点后的正确位置)
-        up = (p1 - torso_bone.head)
-        if up.length < 1e-6:
-            up = Vector((0.0, 0.0, 1.0))
+        d = (p1 - torso_bone.head)
+        if d.length < 1e-6:
+            d = up.copy()
         neck.tail = p1
-        neck.head = p1 - up.normalized() * 0.07 * scale
+        neck.head = p1 - d.normalized() * 0.07 * scale
         neck.parent = torso_bone
-        neck.align_roll(Vector((0.0, 0.0, 1.0)))
+        neck.align_roll(up)
         head_bone.parent = neck
         helpers.append("neck_link")
-    # --- Toes: 挂在 ankle_roll 下, 指向脚尖 (URDF 前进方向 = +X) ---
+    # --- Toes: 挂在 ankle_roll 下, 指向脚尖 (URDF 前进方向 = fwd) ---
     for side in ("left", "right"):
         ankle = eb.get(side + "_ankle_roll_link")
         if ankle is None:
             continue
         toe = eb.new(side + "_toe_link")
-        fwd = Vector((1.0, 0.0, 0.0)) * scale
-        down = Vector((0.0, 0.0, -1.0)) * scale
+        down = -up
         toe.head = ankle.head + fwd * 0.06 + down * 0.02
         toe.tail = ankle.head + fwd * 0.16 + down * 0.02
         toe.parent = ankle
-        toe.align_roll(Vector((0.0, 0.0, 1.0)))
+        toe.align_roll(up)
         helpers.append(side + "_toe_link")
     return helpers
 
@@ -620,12 +622,18 @@ def build_armature(urdf, keep, scale, robot_name, hik=True):
     bpy.context.scene.collection.objects.link(arm_obj)
     arm_obj.show_in_front = True
 
+    # 当前构建世界的"上/前"方向: 由根 link 的 world 矩阵推导。
+    # 常规 Z-up 构建 = (0,0,1)/(1,0,0); Houdini 的 Y-up 烘焙构建 = (0,1,0)/(0,0,1)。
+    Rw = urdf.world[urdf.root_link].to_3x3()
+    up = (Rw @ Vector((0.0, 0.0, 1.0))).normalized()
+    fwd = (Rw @ Vector((1.0, 0.0, 0.0))).normalized()
+
     # ---- bone heads -----------------------------------------------------------
     # 第一遍: 每根骨头的 head 位置 (revolute=关节原点; fixed+全局式STL=几何锚点)
     heads = {}
     geo_anchored = set()
     for name in keep:
-        h, geo = bone_head_position(urdf, name)
+        h, geo = bone_head_position(urdf, name, up)
         heads[name] = h * scale
         if geo:
             geo_anchored.add(name)
@@ -645,7 +653,7 @@ def build_armature(urdf, keep, scale, robot_name, hik=True):
         else:
             # 多子: 优先"最向上"的子 (脊柱观感直), 再往自身几何中心微调
             kid_heads = [heads[urdf.joint_child_link(j)] for j in kids]
-            main = max(kid_heads, key=lambda p: p.z)
+            main = max(kid_heads, key=lambda p: p.dot(up))
             vc = visual_center_world(urdf, name)
             tail = main.lerp(vc * scale, 0.25) if vc is not None else main
         min_len = 0.06 * scale
@@ -672,7 +680,7 @@ def build_armature(urdf, keep, scale, robot_name, hik=True):
             eb[name].parent = eb[par]
     hik_helpers = []
     if hik:
-        hik_helpers = add_hik_helper_bones(urdf, arm_data, scale)
+        hik_helpers = add_hik_helper_bones(urdf, arm_data, scale, up, fwd)
     _mode_set(arm_obj, "OBJECT")
 
     # ---- joint metadata as bone custom properties ----------------------------
@@ -865,9 +873,13 @@ def apply_ground_offset(arm_obj, meshes):
 # ----------------------------------------------------------------------------
 # USD export
 # ----------------------------------------------------------------------------
-def export_usd(path, units="cm", up_axis="Y"):
+def export_usd(path, units="cm", up_axis="Y", convert_orientation=None):
     meters_per_unit = 0.01 if units == "cm" else 1.0
-    convert_orientation = (up_axis == "Y")   # Blender is Z-up; USD/Maya default is Y-up
+    # Blender 是 Z-up; 常规 Y-up 导出靠导出器转换 (把 Z→Y 旋转放在 SkelRoot 变换上)。
+    # Houdini 的 USD Character Import 不应用根变换 -> 该路径用 convert_orientation=False,
+    # Y-up 旋转提前烘进数据本身 (见 export_houdini_usd)。
+    if convert_orientation is None:
+        convert_orientation = (up_axis == "Y")
     kwargs = dict(
         filepath=path,
         export_animation=False,
@@ -904,13 +916,15 @@ def export_usd(path, units="cm", up_axis="Y"):
 # ----------------------------------------------------------------------------
 # USD 变体: 一次导入自动导出多份, 各 DCC 免手工换单位/轴向
 #   maya     主文件 (路径 = --usd), cm + Y-up, 面向 +Z —— 与旧版行为完全一致
-#   houdini  _houdini 后缀, m + Y-up —— Houdini 原生米制, KineFX/SOP 不用开 Convert Units
+#   houdini  _houdini 后缀, m + Y-up —— 数据直接烘成 Y-up、SkelRoot 无任何变换
+#            (Houdini 的 USD Character Import 对 模型/骨骼 输出不应用根变换,
+#             只有动画输出应用; 常规 Y-up 导出的根旋转会让前两者躺倒)
 #   ue       _ue 后缀, cm + Z-up + URDF 原生朝向 (+X 前) —— 命中 UE 的 Z-up/厘米/前向惯例,
 #            USD Stage 演员和 Content Browser 直接导入两条路都不需要任何转换
 # ----------------------------------------------------------------------------
 USD_VARIANTS = {
     "maya":    {"suffix": "",         "units": "cm", "up": "Y"},
-    "houdini": {"suffix": "_houdini", "units": "m",  "up": "Y"},
+    "houdini": {"suffix": "_houdini", "units": "m",  "up": "Y", "baked": True},
     "ue":      {"suffix": "_ue",      "units": "cm", "up": "Z"},
 }
 
@@ -924,7 +938,7 @@ def usd_variant_path(usd_path, suffix):
 
 
 def plan_usd_variants(usd_path, cfg):
-    """把 usd_variants 配置解析成导出计划: [{name, path, units, up, facing}]"""
+    """把 usd_variants 配置解析成导出计划: [{name, path, units, up, facing, baked}]"""
     if not usd_path:
         return []
     names = [v.strip().lower() for v in str(cfg.get("usd_variants", "maya,houdini,ue")).split(",")
@@ -941,10 +955,84 @@ def plan_usd_variants(usd_path, cfg):
             path, units, up = usd_path, cfg["usd_units"], cfg.get("usd_up", "Y")
         else:
             path, units, up = usd_variant_path(usd_path, spec["suffix"]), spec["units"], spec["up"]
+        if spec.get("baked"):
+            # 烘焙式变体固定 .usda 文本格式: 导出后要修补 upAxis 元数据,
+            # 而 Blender 自带 Python 没有 pxr 包, 只能文本替换 (二进制改不了)
+            root, _ext = os.path.splitext(path)
+            path = root + ".usda"
+            plan.append({"name": n, "path": path, "units": units, "up": up,
+                         "facing": "baked", "baked": True})
+            continue
         # Y-up 变体用 Maya 朝向 (+Z 前); Z-up (UE) 变体保持 URDF 原生朝向 (+X 前)
         facing = "native" if (up == "Z" or not face_maya) else "maya"
-        plan.append({"name": n, "path": path, "units": units, "up": up, "facing": facing})
+        plan.append({"name": n, "path": path, "units": units, "up": up,
+                     "facing": facing, "baked": False})
     return plan
+
+
+def patch_usda_upaxis_y(path):
+    """把 .usda 文本里的 upAxis = "Z" 修补为 "Y"。
+    用于 Houdini 烘焙导出: 数据已经烘成 Y-up, 但 Blender 在 convert_orientation=False
+    时固定写 upAxis="Z"。Blender 自带 Python 没有 pxr 包, 只能做文本替换。"""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        if 'upAxis = "Y"' in text[:2000]:
+            return True
+        new = text.replace('upAxis = "Z"', 'upAxis = "Y"', 1)
+        if new == text:
+            print("  [warn] %s: 未找到 upAxis 元数据, 请检查文件头" % path)
+            return False
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new)
+        return True
+    except Exception as e:
+        print("  [warn] upAxis 修补失败 (%s): %s" % (path, e))
+        return False
+
+
+def export_houdini_usd(path, urdf, keep, cfg, lift):
+    """Houdini 专用导出: 数据直接烘成 Y-up, SkelRoot 不带任何变换。
+
+    背景: Blender 常规 Y-up 导出把 Z→Y 转换旋转放在 SkelRoot 的 xform 上,
+    而 Houdini 的 USD Character Import 节点对 模型/骨骼 两个输出不应用根变换
+    (只有动画输出应用) —— 结果模型和骨骼躺倒、动画却正常。
+    做法: 把 Y-up 旋转 (含贴地抬升) 直接烘进 urdf.world 后重建场景再导出,
+    根变换恒等, 三个输出全部一致。导出后把场景恢复成常规 Z-up (GUI 视口正常)。"""
+    t0 = time.time()
+    # (x,y,z)_Z-up -> (y,z,x)_Y-up: 上(+Z)->+Y, 前(+X)->+Z, 右手系保持
+    R = Matrix(((0.0, 1.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))).to_4x4()
+    if lift:
+        R = Matrix.Translation(Vector((0.0, lift, 0.0))) @ R
+    saved = {l: m.copy() for l, m in urdf.world.items()}
+    for l in urdf.world:
+        urdf.world[l] = R @ urdf.world[l]
+
+    _coll, meshes_coll = fresh_scene(urdf.name)
+    arm_h, _arm_data, _hik = build_armature(urdf, keep, cfg["scale"], urdf.name,
+                                            cfg.get("hik", True))
+    skin_meshes(urdf, keep, cfg["scale"], arm_h, meshes_coll, cfg["auto_smooth"],
+                cfg.get("nice_materials", True), cfg.get("auto_uv", True))
+    # armature 对象保持恒等变换 (朝向已烘进 world, 不调 apply_maya_facing)
+    export_usd(path, "m", "Y", convert_orientation=False)
+    patch_usda_upaxis_y(path)
+
+    # 恢复常规 Z-up 场景 (GUI 用户看到的仍是标准结果; .blend 早已保存, 不受影响)
+    urdf.world.clear()
+    urdf.world.update(saved)
+    _coll, meshes_coll = fresh_scene(urdf.name)
+    arm_obj, _ad, _h = build_armature(urdf, keep, cfg["scale"], urdf.name,
+                                      cfg.get("hik", True))
+    meshes = skin_meshes(urdf, keep, cfg["scale"], arm_obj, meshes_coll, cfg["auto_smooth"],
+                         cfg.get("nice_materials", True), cfg.get("auto_uv", True))
+    if cfg.get("face_maya", True):
+        apply_maya_facing(arm_obj)
+    if cfg.get("ground", True):
+        apply_ground_offset(arm_obj, meshes)
+    bpy.context.view_layer.update()
+    print("USD houdini: %s (units=m, up=Y, SkelRoot 恒等-修复 Character Import 躺倒, 重建 %.0fs)"
+          % (path, time.time() - t0))
+    return arm_obj, meshes
 
 
 def gui_popup(title, lines):
@@ -1113,8 +1201,8 @@ def get_args():
     p.add_argument("--skip-links", default="force_sensor|imu|d435|mid360")
     p.add_argument("--keep-urdf-orientation", action="store_true",
                    help="do not rotate the rig to face Maya's +Z (keeps URDF +X facing)")
-    p.add_argument("--pose", choices=["tpose", "zero"], default="tpose",
-                   help="绑定姿势: tpose = T-Pose 肩外展 (动捕重定向标准, 默认); zero = URDF 零位 (机器人真值回放)")
+    p.add_argument("--pose", choices=["tpose", "zero"], default="zero",
+                   help="绑定姿势: zero = URDF 官方零位 (默认, 手臂下垂); tpose = T-Pose 肩外展 (动捕重定向可选)")
     p.add_argument("--no-ground", action="store_true",
                    help="不抬到脚底贴地 (保持 pelvis 在世界原点, URDF 原生行为)")
     p.add_argument("--no-smooth", action="store_true")
@@ -1162,11 +1250,13 @@ def main():
     if cfg.get("pose", "zero") == "tpose":
         pose_offsets = urdf.apply_tpose()
         if pose_offsets:
-            print("Pose   : T-Pose (肩 roll 外展: %s)" %
-                  ", ".join("%s%+.0f°" % (k.replace("_shoulder_roll_link", ""), v)
-                            for k, v in sorted(pose_offsets.items())))
+            print("Pose   : T-Pose (肩 roll 外展: %s)"
+                  % ", ".join("%s%+.0f°" % (k.replace("_shoulder_roll_link", ""), v)
+                              for k, v in sorted(pose_offsets.items())))
         else:
             print("Pose   : [提示] 未找到 shoulder_roll 关节, 保持 URDF 零位")
+    else:
+        print("Pose   : URDF 官方零位 (手臂下垂; 动捕偏好 T-Pose 起手可用 --pose tpose)")
     keep = select_links(urdf, cfg["skip_links"])
     n_movable = sum(1 for j in urdf.joints if j.get("type") in ("revolute", "continuous", "prismatic"))
     print("Robot  : %s | links %d | joints %d (movable %d) | skeleton bones %d"
@@ -1182,8 +1272,10 @@ def main():
     if cfg.get("face_maya", True):
         apply_maya_facing(arm_obj)
     ground_info = None
+    ground_lift = 0.0
     if cfg.get("ground", True):
         off = apply_ground_offset(arm_obj, meshes)
+        ground_lift = off
         ground_info = {
             "feet_at_world_z": 0.0,
             "pelvis_height_m": round(off, 4),
@@ -1219,6 +1311,8 @@ def main():
             print("[提示] GUI 模式默认不自动保存 .blend; 如需保存请在 CONFIG['blend'] 填路径,")
             print("       或在 Blender 里 File > Save As 手动保存 (默认建议路径: %s)" % blend_path)
     for v in usd_plan:
+        if v.get("baked"):
+            continue    # Houdini 烘焙式变体在渲染预览之后单独导出 (要重建场景)
         if v["facing"] == "native":
             arm_obj.rotation_euler = (0.0, 0.0, 0.0)   # URDF 原生: Z-up, +X 前 (UE 惯例)
         else:
@@ -1231,6 +1325,9 @@ def main():
     if render_path:
         render_preview(render_path, arm_obj, cfg["scale"])
         print("Render :", render_path)
+    for v in usd_plan:               # Houdini 烘焙式导出 (重建 Y-up 场景, 导出后恢复 Z-up)
+        if v.get("baked"):
+            export_houdini_usd(v["path"], urdf, keep, cfg, ground_lift)
 
     print("Done in %.1fs" % (time.time() - t0))
     print("=" * 72)

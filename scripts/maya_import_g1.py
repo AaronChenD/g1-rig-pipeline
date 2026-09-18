@@ -14,7 +14,7 @@ maya_import_g1.py — 在 Maya 2025 中导入 g1-rig-pipeline 生成的 USD 骨�
   - 59 个 skinned mesh + skinCluster (每个 mesh 100% 绑定到自己的骨骼)
   - 机器人总高约 132 cm (Maya 默认 cm 单位下)
   - 站立方向: Y-up, 面朝 +Z (Maya 角色标准朝向)
-  - 绑定姿势: T-Pose (双臂水平外展, 动捕重定向标准), 双脚贴地 (脚底 Y=0, pelvis Y≈79cm)
+  - 绑定姿势: URDF 官方零位 (手臂自然下垂, 机器人真值回放零补偿), 双脚贴地 (脚底 Y=0, pelvis Y≈79cm)
 
 备注:
   - USD 由 Blender 以 metersPerUnit=0.01 (厘米) 导出, 与 Maya 默认单位一致, 无需缩放。

@@ -1583,21 +1583,21 @@
   ],
   "usd_files": {
     "maya": {
-      "file": "tp.usda",
+      "file": "zp.usda",
       "units": "cm",
       "up": "Y",
       "facing": "+Z (DCC 前向)",
       "target_dcc": "Maya"
     },
     "houdini": {
-      "file": "tp_houdini.usda",
+      "file": "zp_houdini.usda",
       "units": "m",
       "up": "Y",
       "facing": "+Z (DCC 前向)",
       "target_dcc": "Houdini"
     },
     "ue": {
-      "file": "tp_ue.usda",
+      "file": "zp_ue.usda",
       "units": "cm",
       "up": "Z",
       "facing": "+X (URDF/UE 原生)",
@@ -1605,13 +1605,10 @@
     }
   },
   "pose": {
-    "name": "tpose",
-    "description": "T-Pose: 双肩 roll ±90° 水平外展 (动捕重定向标准起手)",
-    "joint_offsets_deg": {
-      "left_shoulder_roll_link": 90.0,
-      "right_shoulder_roll_link": -90.0
-    },
-    "note": "绑定姿势即 T-Pose。机器人真值回放补偿: urdf关节角 = 骨骼局部旋转 + 上述偏移"
+    "name": "zero",
+    "description": "URDF 官方零位 (手臂自然下垂)",
+    "joint_offsets_deg": {},
+    "note": "骨骼局部旋转 = urdf 关节角 (无偏移)"
   },
   "ground": {
     "feet_at_world_z": 0.0,

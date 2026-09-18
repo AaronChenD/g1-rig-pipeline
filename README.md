@@ -184,7 +184,7 @@ scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29d
 | `--usd-up` | `Y` | 主 USD（Maya 版）上轴：`Y`（Maya 标准）/ `Z`（保持 URDF 原生） |
 | `--usd-variants` | `maya,houdini,ue` | 自动导出的 USD 变体（逗号分隔）：`maya` 主文件 + `_houdini` 米制版 + `_ue` Z-up 版；只导主文件用 `maya` |
 | `--keep-urdf-orientation` | 关 | 默认把骨架转成 Maya 惯例（面朝 +Z） |
-| `--pose` | `tpose` | 绑定姿势：`tpose` = T-Pose 双肩外展（动捕重定向标准，默认）/ `zero` = URDF 零位（手臂下垂，机器人真值回放用） |
+| `--pose` | `zero` | 绑定姿势：`zero` = URDF 官方零位（默认，手臂下垂）/ `tpose` = T-Pose 双肩外展（动捕重定向可选起手） |
 | `--no-ground` | 关 | 默认抬到**双脚贴地**（脚底 Z=0、pelvis Z≈0.79m）；此参数保持 URDF 原生 pelvis 在原点 |
 | `--skip-links` | `force_sensor\|imu\|d435\|mid360` | 正则过滤噪声 link（传感器等） |
 | `--no-uv` | 关 | 默认自动展 UV（STL 无 UV，想贴图必须有；见 FAQ Q11） |
@@ -193,9 +193,9 @@ scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29d
 **导入后检查：**
 
 - 大纲里有一个 `*_skeleton` Armature + 两个 Collection（骨骼 / 网格）
-- **绑定姿势 = T-Pose**（双臂水平外展），**双脚贴地站在网格上**：脚底 Z=0、pelvis 在 Z≈0.79 m、总高 1.32 m——动捕重定向标准起手（`--pose zero --no-ground` 可退回 URDF 原生摆位）
+- **绑定姿势 = URDF 官方零位**（手臂自然下垂，机器人真值回放零补偿），**双脚贴地站在网格上**：脚底 Z=0、pelvis 在 Z≈0.79 m、总高 1.32 m（`--pose tpose` 可切换动捕重定向常用的 T-Pose 起手；`--no-ground` 可退回 URDF 原生 pelvis 原点）
 - 选中骨骼旋转（比如 `left_elbow_link`）→ 对应手臂网格跟着动
-- 注意：**Blender 姿态骨骼默认旋转模式是四元数**，脚本存了每个关节的旋转轴/限位（见[关节元数据](#关节元数据重定向用)），想精确按机器人关节轴摆位可参考该表；T-Pose 的肩部偏移量记录在 meta JSON 的 `pose.joint_offsets_deg`
+- 注意：**Blender 姿态骨骼默认旋转模式是四元数**，脚本存了每个关节的旋转轴/限位（见[关节元数据](#关节元数据重定向用)），想精确按机器人关节轴摆位可参考该表
 
 ### 方式 B：LinkForge 插件（Blender Extensions 官方插件，图形界面）
 
@@ -220,12 +220,12 @@ scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29d
 | 文件 | 给谁 | 单位 | up 轴 | 朝向 | 备注 |
 |---|---|---|---|---|---|
 | `<名称>.usda` | **Maya 2025** | 厘米 | Y-up | 面向 +Z | 主文件名不变（与旧版行为一致，`maya_import_g1.py` 不用改） |
-| `<名称>_houdini.usda` | **Houdini 21** | 米 | Y-up | 面向 +Z | 原生米制（metersPerUnit=1.0），KineFX/`USD Character Import` **不用再开 Convert Units** |
+| `<名称>_houdini.usda` | **Houdini 21** | 米 | Y-up | 面向 +Z | 原生米制；**数据直接烘成 Y-up、根变换恒等**——`USD Character Import` 的模型/骨骼/动画三个输出方向完全一致（固定 `.usda` 文本格式） |
 | `<名称>_ue.usda` | **Unreal Engine 5** | 厘米 | Z-up | 面向 +X | 正好命中 UE 自己的 Z-up/厘米/X 前向惯例，**任何导入路径都不需要转换** |
 
 - 实测（DFQ 版）：三个文件 upAxis/单位元数据正确，Maya/Houdini 版整机沿 Y 高 132.3cm/1.323m、脚尖朝 +Z；UE 版沿 Z 高 132.3cm、脚尖朝 +X、SkelRoot 恒等变换。
-- **三份均为 T-Pose 绑定 + 双脚贴地**（脚底在 0、pelvis 在 79.2cm、双腕对称 ±33.4cm 于肩高）——动捕重定向直接可用，无需再摆参考姿势。
-- 后缀自动跟随扩展名：`--usd` 写成 `.usdc`/`.usdz` 时，`_houdini`/`_ue` 兄弟文件同样用该格式。
+- **三份均为 URDF 官方零位绑定（手臂下垂）+ 双脚贴地**（脚底在 0、pelvis 在 79.2cm）——机器人真值回放零补偿；偏好 T-Pose 起手做动捕重定向的话加 `--pose tpose`。
+- 扩展名说明：`--usd` 写成 `.usdc`/`.usdz` 时 `_ue` 兄弟文件跟随该格式；`_houdini` 固定 `.usda`（导出后要修补 upAxis 元数据，Blender 内置 Python 没有 pxr，只能文本替换）。
 - 只导主文件：`--usd-variants maya`；自定义子集如 `--usd-variants maya,ue`。
 - `_skeleton_meta.json` 的 `usd_files` 字段记录了每个变体的文件名/单位/轴向/朝向。
 
@@ -419,18 +419,21 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 **Q14：Maya 导入报 `Ill-formed SdfPath` / `Invalid prim name '鍘熺悊鍖朹BSDF'`？**
 **中文版 Blender 的坑**：中文界面下 Principled BSDF 节点名是 `原理化BSDF`，Blender 导出 USD 时把它写成了 Shader prim 名；Maya（Windows/GBK 环境）解析非 ASCII prim 名失败，整个文件导入报错（乱码 `鍘熺悊鍖朹BSDF` 就是 UTF-8 的"原理化BSDF"被按 GBK 读出来的样子）。**2025-09-18 后的脚本已修复**：节点按类型查找 + 强制所有节点名 ASCII。用新版脚本在 Blender 里重新 Run Script（自动覆盖旧 .usda）即可。不想重跑的话，用 VSCode/Notepad++ 打开 .usda，把 `原理化BSDF` 全部替换为 `Principled_BSDF`（保持 UTF-8 保存）也能修好。
 
-**Q15：Houdini 21 怎么用这个 USD？USD Character Import 导入后方向/大小都不对？**
-**2025-09 起脚本默认自动导出 Houdini 专用文件 `<名称>_houdini.usda`（米制、Y-up、面向 +Z），直接用它，什么转换都不用做。** 之前"大小差 100 倍"的根源：给 Maya 的主文件是**厘米制**（metersPerUnit=0.01），而 Houdini/Solaris 原生是**米**，OpenUSD 引用时**不做自动单位换算**——用错文件就会差 100 倍。现在的正确姿势：
+**Q15：Houdini 21 怎么用这个 USD？USD Character Import 导入后模型/骨骼躺倒了？**
+**用 `<名称>_houdini.usda`（米制、Y-up、面向 +Z）**——2025-09 起这份文件是专门为 Houdini 烘焙的，`USD Character Import` 的三个输出（模型 / 骨骼 pose / 动画）**方向完全一致，不需要任何手动转换**。
 
-1. **认准 `_houdini` 后缀的文件**（实测 metersPerUnit=1.0、整机 1.323 m、Y-up，与 Houdini 完全同调）。重新跑一次脚本/`convert_g1.bat` 即可生成。
-2. **Solaris（LOPs）直接加载**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `_houdini.usda` → 视口所见即所得（Hydra 直接渲染 UsdSkel，无需转换）。
-3. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，多个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的。用它自带的 **Convert Units** 参数即可；若骨骼和网格仍差一个 90°，是节点丢根变换（`/root` 上有 -90°X 的 Z-up→Y-up 转换旋转）——给错位的那一路加个 Transform SOP 转 90° 即可对齐。
-4. 相关节点：`USD Animation Import`（只导骨骼+动画）、`USD Skin Import`（只导蒙皮权重）。
+背景（为什么以前会躺倒）：该节点对**模型和骨骼两个输出不应用 USD 的根变换**（只有动画输出应用）。而 Blender 常规 Y-up 导出把 Z-up→Y-up 的转换旋转挂在 SkelRoot 的 xform 上——于是动画输出正常、模型和骨骼却躺倒 90°。现在脚本生成 `_houdini` 文件时把 Y-up 旋转（含贴地抬升）**直接烘进骨骼/网格数据本身**，SkelRoot 变换恒等，三个输出自然一致。用法：
+
+1. **Solaris（LOPs）**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `_houdini.usda` → 视口所见即所得（米制 1:1，Hydra 直接渲染 UsdSkel）。
+2. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，三个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的；Convert Units 参数开不开都行（文件已是米制）。
+3. 相关节点：`USD Animation Import`（只导骨骼+动画）、`USD Skin Import`（只导蒙皮权重）。
+
+> 旧文件（2025-09 之前生成的）如果只有动画输出方向对：重新跑一次脚本生成新 `_houdini.usda` 即可；或临时给模型/骨骼两路加 Transform SOP 旋转 90°。
 
 **Q16：MotionBuilder 里无法创建 HIK 角色（"骨骼不够"）？能自己加虚拟骨骼吗？**
 可以，加虚拟骨（helper bones）正是 HIK 适配非人形骨骼的标准做法。而且有个好消息：**G1 的 HIK 15 个必需节点其实都有真实骨骼**（HIK 官方必需项：Hips / Spine / Head / 双臂各 3 / 双腿各 3，Neck 和手指都是可选）——先按下面的映射表把 Definition 填满，大多情况根本不用加骨：
 
-另外：本管线的**绑定姿势就是标准 T-Pose（双臂水平外展、双脚贴地）**——Character Definition 建好后直接点 **Set Stance Pose**（或 Set T-pose），不用再手动摆参考姿势。
+另外：本管线的**绑定姿势是 URDF 官方零位（手臂自然下垂）、双脚贴地**——与官方机器人状态一致；如果你的动捕流程偏好 T-Pose 起手，重新跑脚本时加 `--pose tpose` 即可。
 
 | HIK 槽位 | G1 骨骼 | HIK 槽位 | G1 骨骼 |
 |---|---|---|---|
@@ -477,16 +480,15 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 注意三点：
 
 - **不要再手动设缩放/旋转**——文件里已经是 UE 原生数值。如果导入后看起来还是躺倒的，说明用错成主文件（Y-up 版）了，换 `_ue` 后缀那份。
-- **绑定姿势是 T-Pose、双脚贴地**（pelvis 在 79.2cm）——做 IK Retargeter / 动捕重定向时 reference pose 直接可用，不用先摆姿势。
+- **绑定姿势是 URDF 官方零位（手臂下垂）、双脚贴地**（pelvis 在 79.2cm）——reference pose 与机器人官方状态一致；IK Retargeter 偏好 T-Pose 参考的话用 `--pose tpose` 重导一份。
 - **左右手系**：USD 是右手系、UE 是左手系，导入器会自动翻转轴向和三角形绕向（G1 左右对称，视觉无差异）。要在 UE 里做 IK/物理资产，照常在导入的 Skeleton 上生成即可。
 - 老版本 UE（5.0 之前）对 UsdSkel 支持不完整，骨骼导入异常时走 [FBX 备选路线](#fbx最复古也最稳的保底)。
 
-**Q19：机器人的初始摆位/姿势是什么样的？为什么 pelvis 不在原点？想用机器人真实关节角回放怎么办？**
-三件事，脚本现在都按 DCC 角色惯例处理（默认开启）：
+**Q19：机器人的初始摆位/姿势是什么样的？为什么 pelvis 不在原点？**
+两件事，脚本默认都处理好（与官方一致 + DCC 角色惯例）：
 
 1. **双脚贴地**：URDF 的原点在 pelvis，照原样导入机器人会"站"在地下（G1 脚底在 Z=-0.79m，网格一半埋在地下）。脚本默认把整个骨架抬到**脚底正好在世界 Z=0**（pelvis 在 Z≈0.79m）——HIK/IK/地面接触都以此为前提。想要 URDF 原生：`--no-ground`。
-2. **T-Pose 起手**：URDF 零位是双臂下垂贴身（官方机器人待机位），对动捕重定向不友好。脚本默认把**双肩 roll ±90° 水平外展成标准 T-Pose**，作为绑定姿势（bind pose）——Maya/MotionBuilder/UE 拖进去就是 T-Pose，HIK Set Stance、UE Retarget 直接用。想要 URDF 零位：`--pose zero`。
-3. **机器人真值回放**：T-Pose 版上驱动骨骼时注意补偿——`urdf 关节角 = 骨骼局部旋转 + meta JSON 里 pose.joint_offsets_deg 的偏移`（left_shoulder_roll +90°、right_shoulder_roll -90°，其余关节无偏移）。直接做动捕重定向则完全不用管这些偏移。
+2. **绑定姿势 = URDF 官方零位**（手臂自然下垂，机器人真值回放/关节角补偿为零）。动捕重定向流程偏好 T-Pose 起手的话，加 `--pose tpose` 重新导出——肩 roll 偏移（左 +90°/右 -90°）会记录在 meta JSON 的 `pose.joint_offsets_deg`，机器人真值回放时按 `urdf 关节角 = 骨骼局部旋转 + 偏移` 补偿。
 
 meta JSON 的 `pose` / `ground` 字段记录了以上全部信息（姿势名、偏移表、pelvis 高度）。
 
