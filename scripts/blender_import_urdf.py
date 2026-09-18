@@ -214,6 +214,53 @@ def kept_subtree_size(urdf, name, keep):
     return n
 
 
+def mesh_world_bbox(urdf, link_name):
+    """World-space bbox (min, max) of a link's visual meshes, or None."""
+    l = urdf.links[link_name]
+    got = False
+    mn = Vector((1e9, 1e9, 1e9))
+    mx = Vector((-1e9, -1e9, -1e9))
+    for vis in l.findall("visual"):
+        m = vis.find("geometry/mesh") if vis.find("geometry") is not None else None
+        if m is None:
+            continue
+        bb = stl_bbox_raw(mesh_path(urdf, m.get("filename")))
+        if bb is None:
+            continue
+        Mo, _, _ = _origin(vis)
+        W = urdf.world[link_name] @ Mo
+        for x in (bb[0][0], bb[1][0]):
+            for y in (bb[0][1], bb[1][1]):
+                for z in (bb[0][2], bb[1][2]):
+                    w = (W @ Vector((x, y, z, 1.0))).xyz
+                    mn = Vector((min(mn.x, w.x), min(mn.y, w.y), min(mn.z, w.z)))
+                    mx = Vector((max(mx.x, w.x), max(mx.y, w.y), max(mx.z, w.z)))
+                    got = True
+    return (mn, mx) if got else None
+
+
+def bone_head_position(urdf, name):
+    """骨骼 head 的世界位置 (URDF 系)。
+    revolute/continuous/prismatic 一律用关节原点 (动画轴语义的唯一保证)。
+    fixed 关节: 宇树部分 STL 是"全局装配坐标"风格 (head_link/logo_link 的
+    关节原点被拉回骨盆), 原点落在 mesh bbox 之外 -> 改用几何锚点
+    (bbox 底面中心, 即脖子根/零件根部), 让骨头回到零件上。fixed 无动画,
+    挪动零风险; revolute 即使原点略偏也绝不能挪 (官方仿真轴就在那)。"""
+    jpos = urdf.world[name].translation
+    j = urdf.joint_by_child.get(name)
+    jtype = j.get("type") if j is not None else "root"
+    if jtype == "fixed":
+        bb = mesh_world_bbox(urdf, name)
+        if bb is not None:
+            mn, mx = bb
+            pad = 0.03
+            outside = any(jpos[i] < mn[i] - pad or jpos[i] > mx[i] + pad for i in range(3))
+            if outside:
+                anchor = Vector(((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mn.z))
+                return anchor, True
+    return jpos, False
+
+
 def visual_center_world(urdf, link_name):
     """World-space center of a link's visual meshes (from raw STL headers)."""
     acc, n = Vector((0.0, 0.0, 0.0)), 0
@@ -495,14 +542,17 @@ def add_hik_helper_bones(urdf, arm_data, scale):
     虚拟骨不绑任何网格顶点 -> 之后删除它们对模型零影响."""
     eb = arm_data.edit_bones
     helpers = []
-    # --- Neck: 插在 torso_link 与 head_link 之间 ---
+    # --- Neck: 插在 torso 与 head 之间 (head 骨头已按几何锚点放在脖子根) ---
     head_bone = eb.get("head_link")
     torso_bone = eb.get("torso_link")
     if head_bone is not None and torso_bone is not None:
         neck = eb.new("neck_link")
-        p0, p1 = torso_bone.head.copy(), head_bone.head.copy()
-        neck.head = p0.lerp(p1, 0.55)
+        p1 = head_bone.head.copy()                    # 脖子根 (几何锚点后的正确位置)
+        up = (p1 - torso_bone.head)
+        if up.length < 1e-6:
+            up = Vector((0.0, 0.0, 1.0))
         neck.tail = p1
+        neck.head = p1 - up.normalized() * 0.07 * scale
         neck.parent = torso_bone
         neck.align_roll(Vector((0.0, 0.0, 1.0)))
         head_bone.parent = neck
@@ -529,24 +579,34 @@ def build_armature(urdf, keep, scale, robot_name, hik=True):
     bpy.context.scene.collection.objects.link(arm_obj)
     arm_obj.show_in_front = True
 
-    # ---- bone heads / tails -------------------------------------------------
+    # ---- bone heads -----------------------------------------------------------
+    # 第一遍: 每根骨头的 head 位置 (revolute=关节原点; fixed+全局式STL=几何锚点)
+    heads = {}
+    geo_anchored = set()
+    for name in keep:
+        h, geo = bone_head_position(urdf, name)
+        heads[name] = h * scale
+        if geo:
+            geo_anchored.add(name)
+    if geo_anchored:
+        print("  [fix] 几何锚点骨骼 (官方STL为全局坐标, 关节原点不在零件上): %s"
+              % ", ".join(sorted(geo_anchored)))
+
+    # ---- bone tails -----------------------------------------------------------
     tails = {}
     for name in keep:
-        head = urdf.world[name].translation
+        head = heads[name]
         kids = [j for j in urdf.children.get(name, []) if urdf.joint_child_link(j) in keep]
         if len(kids) == 1:
-            tail = urdf.world[urdf.joint_child_link(kids[0])].translation
+            tail = heads[urdf.joint_child_link(kids[0])]
         elif len(kids) == 0:
             tail = None
         else:
-            # multi-child: point toward the child with the biggest kept subtree,
-            # blended toward the link's own visual mass (keeps the spine connected)
-            kids_sorted = sorted(kids, key=lambda j: -kept_subtree_size(urdf, urdf.joint_child_link(j), keep))
-            main = urdf.world[urdf.joint_child_link(kids_sorted[0])].translation
+            # 多子: 优先"最向上"的子 (脊柱观感直), 再往自身几何中心微调
+            kid_heads = [heads[urdf.joint_child_link(j)] for j in kids]
+            main = max(kid_heads, key=lambda p: p.z)
             vc = visual_center_world(urdf, name)
-            tail = main.lerp(vc, 0.35) if vc is not None else main
-        head = head * scale
-        tail = tail * scale if tail is not None else None
+            tail = main.lerp(vc * scale, 0.25) if vc is not None else main
         min_len = 0.06 * scale
         if tail is None or (tail - head).length < 1e-6:
             tail = head + (urdf.world[name].to_3x3() @ Vector((0.0, 0.0, 0.1))) * scale

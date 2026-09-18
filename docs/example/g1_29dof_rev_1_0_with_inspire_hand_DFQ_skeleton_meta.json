@@ -1580,5 +1580,59 @@
         "velocity_rad_s": 32.0
       }
     }
-  ]
+  ],
+  "hik": {
+    "note": "MotionBuilder/Maya HumanIK 骨骼映射表; helpers 为零权重虚拟骨, 可随时删除 (骨骼上 hik_helper=True)",
+    "helpers": [
+      "left_toe_link",
+      "neck_link",
+      "right_toe_link"
+    ],
+    "required_15_filled": true,
+    "mapping": {
+      "Reference": "pelvis",
+      "Hips": "pelvis",
+      "Spine": "waist_yaw_link",
+      "Spine1": "waist_roll_link",
+      "Spine2": "torso_link",
+      "Neck": "neck_link",
+      "Head": "head_link",
+      "LeftArm": "left_shoulder_pitch_link",
+      "LeftForeArm": "left_elbow_link",
+      "LeftHand": "left_wrist_roll_link",
+      "RightArm": "right_shoulder_pitch_link",
+      "RightForeArm": "right_elbow_link",
+      "RightHand": "right_wrist_roll_link",
+      "LeftUpLeg": "left_hip_pitch_link",
+      "LeftLeg": "left_knee_link",
+      "LeftFoot": "left_ankle_pitch_link",
+      "LeftToeBase": "left_toe_link",
+      "RightUpLeg": "right_hip_pitch_link",
+      "RightLeg": "right_knee_link",
+      "RightFoot": "right_ankle_pitch_link",
+      "RightToeBase": "right_toe_link",
+      "LeftHandThumb1": "L_thumb_proximal_base",
+      "LeftHandThumb2": "L_thumb_proximal",
+      "LeftHandThumb3": "L_thumb_intermediate",
+      "LeftHandIndex1": "L_index_proximal",
+      "LeftHandIndex2": "L_index_intermediate",
+      "LeftHandMiddle1": "L_middle_proximal",
+      "LeftHandMiddle2": "L_middle_intermediate",
+      "LeftHandRing1": "L_ring_proximal",
+      "LeftHandRing2": "L_ring_intermediate",
+      "LeftHandPinky1": "L_pinky_proximal",
+      "LeftHandPinky2": "L_pinky_intermediate",
+      "RightHandThumb1": "R_thumb_proximal_base",
+      "RightHandThumb2": "R_thumb_proximal",
+      "RightHandThumb3": "R_thumb_intermediate",
+      "RightHandIndex1": "R_index_proximal",
+      "RightHandIndex2": "R_index_intermediate",
+      "RightHandMiddle1": "R_middle_proximal",
+      "RightHandMiddle2": "R_middle_intermediate",
+      "RightHandRing1": "R_ring_proximal",
+      "RightHandRing2": "R_ring_intermediate",
+      "RightHandPinky1": "R_pinky_proximal",
+      "RightHandPinky2": "R_pinky_intermediate"
+    }
+  }
 }
