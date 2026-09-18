@@ -5,12 +5,12 @@
 > 全程 **不需要安装 ROS**。
 
 ```
-┌────────────────┐   ┌─────────────────────┐   ┌──────────────────────┐   ┌──────────────┐
-│ unitree_ros    │   │ Blender 4.4+/5.x    │   │ USD (.usda)          │   │ Maya 2025    │
-│ git clone      │ → │ blender_import_urdf │ → │ Y-up / 厘米 /UsdSkel│ → │ joint +      │
-│ G1 URDF + STL  │   │ 骨骼+网格+蒙皮+材质  │   │ 蒙皮骨骼             │   │ skinCluster  │
-└────────────────┘   └─────────────────────┘   └──────────────────────┘   └──────────────┘
-       ①                      ②                         ③                    ④
+┌────────────────┐   ┌─────────────────────┐   ┌──────────────────────────┐   ┌──────────────────┐
+│ unitree_ros    │   │ Blender 4.4+/5.x    │   │ USD ×3 (.usda)           │   │ Maya / Houdini / │
+│ git clone      │ → │ blender_import_urdf │ → │ Maya: cm+Y-up (主文件)   │ → │ UE / MB / Isaac  │
+│ G1 URDF + STL  │   │ 骨骼+网格+蒙皮+材质  │   │ Houdini: m+Y-up, UE: cm+Z│   │ 各用对应文件     │
+└────────────────┘   └─────────────────────┘   └──────────────────────────┘   └──────────────────┘
+       ①                      ②                            ③                         ④
 ```
 
 **本管线已在 Blender 5.0.1 与 4.5 LTS 上实测验证**（以 `g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf` 为例）：
@@ -160,7 +160,7 @@ CONFIG = {
 
 5. 点 **▶ Run Script**。3D 视图会出现完整的 G1（骨骼显示在体前，`Show In Front` 已开）。
 
-> 说明：GUI 模式**不会重置/清空你当前打开的文件**（机器人放在新建的 collection 里）；重复运行会自动清理上一次生成的同名内容。默认也不自动保存 `.blend`（控制台会打印建议路径），USD/JSON 照常自动导出。
+> 说明：GUI 模式**不会重置/清空你当前打开的文件**（机器人放在新建的 collection 里）；重复运行会自动清理上一次生成的同名内容。默认也不自动保存 `.blend`（控制台会打印建议路径），USD（三份：主文件 + `_houdini` + `_ue`）/JSON 照常自动导出。
 
 **命令行用法（后台批处理，不开界面）：**
 
@@ -180,8 +180,9 @@ scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29d
 |---|---|---|
 | `--blend / --usd / --meta / --render` | URDF 同目录 | 输出文件路径 |
 | `--scale` | 1.0 | 整体缩放（URDF 原生单位=米，一般不动） |
-| `--usd-units` | `cm` | USD 单位：`cm`（配 Maya 默认）/ `m`（物理米） |
-| `--usd-up` | `Y` | USD 上轴：`Y`（Maya 标准）/ `Z`（保持 URDF 原生） |
+| `--usd-units` | `cm` | 主 USD（Maya 版）单位：`cm`（配 Maya 默认）/ `m`（物理米） |
+| `--usd-up` | `Y` | 主 USD（Maya 版）上轴：`Y`（Maya 标准）/ `Z`（保持 URDF 原生） |
+| `--usd-variants` | `maya,houdini,ue` | 自动导出的 USD 变体（逗号分隔）：`maya` 主文件 + `_houdini` 米制版 + `_ue` Z-up 版；只导主文件用 `maya` |
 | `--keep-urdf-orientation` | 关 | 默认把骨架转成 Maya 惯例（面朝 +Z） |
 | `--skip-links` | `force_sensor\|imu\|d435\|mid360` | 正则过滤噪声 link（传感器等） |
 | `--no-uv` | 关 | 默认自动展 UV（STL 无 UV，想贴图必须有；见 FAQ Q11） |
@@ -212,9 +213,31 @@ scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29d
 
 ## 3. URDF → USD
 
-> 如果你是用方式 A 的脚本/`convert_g1.bat` 跑的，**这一步已经自动完成**（默认导出 `cm + Y-up + UsdSkel`），直接看[第 4 步](#4-maya-2025-导入)。以下为手动导出时对照。
+> 如果你是用方式 A 的脚本/`convert_g1.bat` 跑的，**这一步已经自动完成**，而且默认**一次导出三份 USD**——各 DCC 直接用对应文件，**免手工换单位/轴向**：
 
-在 Blender 里 **File → Export → Universal Scene Description (.usd\*)**，推荐设置：
+| 文件 | 给谁 | 单位 | up 轴 | 朝向 | 备注 |
+|---|---|---|---|---|---|
+| `<名称>.usda` | **Maya 2025** | 厘米 | Y-up | 面向 +Z | 主文件名不变（与旧版行为一致，`maya_import_g1.py` 不用改） |
+| `<名称>_houdini.usda` | **Houdini 21** | 米 | Y-up | 面向 +Z | 原生米制（metersPerUnit=1.0），KineFX/`USD Character Import` **不用再开 Convert Units** |
+| `<名称>_ue.usda` | **Unreal Engine 5** | 厘米 | Z-up | 面向 +X | 正好命中 UE 自己的 Z-up/厘米/X 前向惯例，**任何导入路径都不需要转换** |
+
+- 实测（DFQ 版）：三个文件 upAxis/单位元数据正确，Maya/Houdini 版整机沿 Y 高 132.3cm/1.323m、脚尖朝 +Z；UE 版沿 Z 高 132.3cm、脚尖朝 +X、SkelRoot 恒等变换。
+- 后缀自动跟随扩展名：`--usd` 写成 `.usdc`/`.usdz` 时，`_houdini`/`_ue` 兄弟文件同样用该格式。
+- 只导主文件：`--usd-variants maya`；自定义子集如 `--usd-variants maya,ue`。
+- `_skeleton_meta.json` 的 `usd_files` 字段记录了每个变体的文件名/单位/轴向/朝向。
+
+三份文件内部完全同构，都是标准 **UsdSkel** 蒙皮骨骼——Maya、Houdini、UE、USD View、Isaac Sim 都能直接读：
+
+```
+def SkelRoot "g1_..._skeleton"
+  ├─ def Skeleton   (62 joints, bind/rest 变换)   ← DFQ 版数字, 含 3 根 HIK 虚拟骨
+  └─ def Mesh ×59   (primvars:skel:jointIndices / jointWeights → 每网格 100% 单骨骼)
+```
+
+<details>
+<summary><b>手动在 Blender 里导出</b>（一般用不着——脚本已自动做，点开对照）</summary>
+
+在 Blender 里 **File → Export → Universal Scene Description (.usd\*)**，以 Maya 目标为例的推荐设置（Houdini/UE 版涉及朝向旋转与单位组合，建议直接让脚本自动生成，避免选错）：
 
 | 选项 | 值 | 原因 |
 |---|---|---|
@@ -227,17 +250,9 @@ scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29d
 | Materials | Preview Surface | URDF 颜色 → UsdPreviewSurface |
 | Animation | 关 | 需要导出动画时再开 |
 
-导出后你会得到一个 `.usda`（或 `.usd`），内部结构：
+</details>
 
-```
-def SkelRoot "g1_..._skeleton"
-  ├─ def Skeleton   (59 joints, bind/rest 变换)
-  └─ def Mesh ×59   (primvars:skel:jointIndices / jointWeights → 每网格 100% 单骨骼)
-```
-
-这就是标准的 **UsdSkel** 蒙皮骨骼——Maya、Houdini、USD View、Isaac Sim 都能直接读。
-
-> 💡 想让文件更小：把 `--usd` 的输出路径后缀从 `.usda` 改成 `.usdc`（二进制 crate）或 `.usdz`（打包），Blender 会按扩展名自动选择格式（文本 usda 约 87 MB，二进制约 1/3，内容完全一致）。
+> 💡 想让文件更小：把 `--usd` 的输出路径后缀从 `.usda` 改成 `.usdc`（二进制 crate）或 `.usdz`（打包），Blender 会按扩展名自动选择格式（文本 usda 约 128 MB，二进制约 1/3，内容完全一致）。`_houdini`/`_ue` 兄弟文件会自动跟随同样的格式。
 
 ---
 
@@ -396,21 +411,17 @@ Blender 官方从未内置 URDF 导入。本仓库脚本就是为 Blender 4.4~5.
 带 UV 的 `.usda` 文本约 128 MB。把输出后缀改成 `.usdc`（二进制）约 1/3 大小，内容完全一致；`.usdz` 则是打包格式（单文件分发，Maya 2025 也能直接读）。
 
 **Q13：Maya 脚本提示找不到 USD 文件？**
-USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都会自动生成，默认保存在 **URDF 同目录**（如 `D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_..._DFQ.usda`）。GUI 模式运行完成后会**弹窗显示完整路径**（也可在 Window → Toggle System Console 看 `USD :` 那行）。把 `maya_import_g1.py` 开头的 `USD_FILE` 改成这个完整路径即可。
+USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都会自动生成，默认保存在 **URDF 同目录**，一次出三份：`g1_..._DFQ.usda`（Maya 用）、`..._DFQ_houdini.usda`（Houdini 用）、`..._DFQ_ue.usda`（UE 用）。GUI 模式运行完成后会**弹窗显示完整路径**（也可在 Window → Toggle System Console 看 `USD ...` 那几行）。把 `maya_import_g1.py` 开头的 `USD_FILE` 改成主文件（不带后缀那份）的完整路径即可。
 
 **Q14：Maya 导入报 `Ill-formed SdfPath` / `Invalid prim name '鍘熺悊鍖朹BSDF'`？**
 **中文版 Blender 的坑**：中文界面下 Principled BSDF 节点名是 `原理化BSDF`，Blender 导出 USD 时把它写成了 Shader prim 名；Maya（Windows/GBK 环境）解析非 ASCII prim 名失败，整个文件导入报错（乱码 `鍘熺悊鍖朹BSDF` 就是 UTF-8 的"原理化BSDF"被按 GBK 读出来的样子）。**2025-09-18 后的脚本已修复**：节点按类型查找 + 强制所有节点名 ASCII。用新版脚本在 Blender 里重新 Run Script（自动覆盖旧 .usda）即可。不想重跑的话，用 VSCode/Notepad++ 打开 .usda，把 `原理化BSDF` 全部替换为 `Principled_BSDF`（保持 UTF-8 保存）也能修好。
 
 **Q15：Houdini 21 怎么用这个 USD？USD Character Import 导入后方向/大小都不对？**
-可以加载，但注意单位。这份给 Maya 的 USD 是**厘米制**（metersPerUnit=0.01），而 Houdini/Solaris 原生是**米**；OpenUSD 引用时**不做自动单位换算**，所以厘米文件进 Houdini 会差 100 倍。正确姿势：
+**2025-09 起脚本默认自动导出 Houdini 专用文件 `<名称>_houdini.usda`（米制、Y-up、面向 +Z），直接用它，什么转换都不用做。** 之前"大小差 100 倍"的根源：给 Maya 的主文件是**厘米制**（metersPerUnit=0.01），而 Houdini/Solaris 原生是**米**，OpenUSD 引用时**不做自动单位换算**——用错文件就会差 100 倍。现在的正确姿势：
 
-1. **给 Houdini 单独出一份米制 USD**（推荐，一次到位）：
-   ```bat
-   scripts\convert_g1.bat D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf D:\BlenderPro\G1 "" m
-   ```
-   生成 `..._m.usda`（实测 metersPerUnit=1.0、整机 1.323 m、Y-up，与 Houdini 完全同调；`_m` 后缀不会覆盖 Maya 用的厘米版）。
-2. **Solaris（LOPs）直接加载**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `.usda` → 视口所见即所得（Hydra 直接渲染 UsdSkel，无需转换）。
-3. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，多个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的。另外一定要打开它的 **Convert Units** 参数（SideFX 官方文档明确：大小差 100 倍就是米/厘米单位问题，开它解决）。用米制文件 + Convert Units 后大小方向即恢复正常；若骨骼和网格仍差一个 90°，是节点丢根变换（`/root` 上有 -90°X 的 Z-up→Y-up 转换旋转）——给错位的那一路加个 Transform SOP 转 90° 即可对齐。
+1. **认准 `_houdini` 后缀的文件**（实测 metersPerUnit=1.0、整机 1.323 m、Y-up，与 Houdini 完全同调）。重新跑一次脚本/`convert_g1.bat` 即可生成。
+2. **Solaris（LOPs）直接加载**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `_houdini.usda` → 视口所见即所得（Hydra 直接渲染 UsdSkel，无需转换）。
+3. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，多个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的。用它自带的 **Convert Units** 参数即可；若骨骼和网格仍差一个 90°，是节点丢根变换（`/root` 上有 -90°X 的 Z-up→Y-up 转换旋转）——给错位的那一路加个 Transform SOP 转 90° 即可对齐。
 4. 相关节点：`USD Animation Import`（只导骨骼+动画）、`USD Skin Import`（只导蒙皮权重）。
 
 **Q16：MotionBuilder 里无法创建 HIK 角色（"骨骼不够"）？能自己加虚拟骨骼吗？**
@@ -446,6 +457,23 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 修正后的脊柱链（URDF Z-up，米）：pelvis 0 → torso 0.044~0.292 → neck 0.255~0.325 → **head 0.325~0.425**（头壳网格顶 z≈0.53，脚底 z≈-0.79，整机 1.32 m 不变）。实测：neck 转头 30° 时头顶前移 0.118 m、下巴 0.041 m（真绕脖子转，不再"绕骨盆甩"）；膝 45° 脚移 0.247 m。若你用其它导入器（LinkForge、urdf_importer 等）看到头骨戳在骨盆，那就是它们的通病——本仓库脚本是已知唯一做此修正的路线。
 
 ![G1 骨骼与网格对位（修正后）](docs/img/g1_skeleton_overlay.png)
+
+**Q18：Unreal Engine 5 怎么导入？还需要转轴向/单位吗？**
+**用 `<名称>_ue.usda`，什么都不用转。** 这个文件是专门按 UE 的惯例生成的：**Z-up、厘米、面向 +X**（UE 世界本身就是 Z-up + 1 单位 = 1cm，角色前向惯例是 +X）——实测 upAxis="Z" 元数据、整机沿 Z 高 132.3cm、脚尖朝 +X、SkelRoot 无变换。所以无论是 USD Stage 工作流还是直接导入资产，都不会出现"躺倒/差 100 倍/侧身"。
+
+导入步骤：
+
+1. **启用插件**：Edit → Plugins → 搜 "USD Importer" → 勾选 Enabled（UE 5.x 自带，一般默认已开）→ 重启编辑器。
+2. **两条路任选**：
+   - **直接导入资产**（推荐做 SkeletalMesh 用）：Content Browser → Add/Import → 选 `_ue.usda`（或直接把文件拖进 Content Browser）。UE 会把 UsdSkel 转成 **SkeletalMesh + Skeleton + 材质实例**资产，骨骼名和 meta JSON 里完全一致，可直接做动画/重定向。
+   - **USD Stage 工作流**（保持 USD 数据流、可热更新）：把文件拖进视口生成 USD Stage Actor；之后在 USD Stage Editor 里用 Action → Import 落地成资产。
+3. **File → Import Into Level** 也可以（资产 + Actor 一起进关卡）。
+
+注意三点：
+
+- **不要再手动设缩放/旋转**——文件里已经是 UE 原生数值。如果导入后看起来还是躺倒的，说明用错成主文件（Y-up 版）了，换 `_ue` 后缀那份。
+- **左右手系**：USD 是右手系、UE 是左手系，导入器会自动翻转轴向和三角形绕向（G1 左右对称，视觉无差异）。要在 UE 里做 IK/物理资产，照常在导入的 Skeleton 上生成即可。
+- 老版本 UE（5.0 之前）对 UsdSkel 支持不完整，骨骼导入异常时走 [FBX 备选路线](#fbx最复古也最稳的保底)。
 
 ## 参考
 

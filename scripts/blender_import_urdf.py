@@ -19,6 +19,12 @@ B) Command line, with the blender binary:
        --blend "out/g1.blend" --usd "out/g1.usda" --meta "out/g1.json" --render "out/g1.png"
    (注意 -- 分隔符不能少; 直接 `blender 脚本.py` 启动也能跑, 但推荐上面这种标准形式)
 
+USD 输出 (默认一次导出三份, 按 DCC 各取所需, 无需再手工换单位/轴向):
+   <name>.usda          Maya    — cm + Y-up, 面向 +Z (Maya 标准, 主文件名不变)
+   <name>_houdini.usda  Houdini — m  + Y-up (Houdini 原生米制, 不用再开 Convert Units)
+   <name>_ue.usda       UE      — cm + Z-up, 面向 +X (UE 的 Z-up/厘米/前向惯例, 免转换)
+   (--usd-variants maya 可只导主文件; 后缀自动跟随 .usda/.usdc/.usdz 扩展名)
+
 The generated USD contains a UsdSkel skeleton + skinned meshes (exported in
 centimeters by default so it drops into Maya's default cm scene at true size).
 A sidecar .json stores every joint's axis/limits for retargeting.
@@ -47,8 +53,9 @@ CONFIG = {
     "meta":   r"",    # optional: joint metadata .json path
     "render": r"",    # optional: preview .png path
     "scale":  1.0,    # overall scale (1.0 = meters, the URDF unit)
-    "usd_units": "cm",  # "cm" = Maya-friendly (default), "m" = physical meters
-    "usd_up": "Y",      # USD up axis: "Y" (Maya standard) or "Z" (keep URDF native)
+    "usd_units": "cm",  # 主 USD (Maya) 的单位: "cm" = Maya 友好 (默认), "m" = 物理米
+    "usd_up": "Y",      # 主 USD (Maya) 的 up 轴: "Y" (Maya 标准) 或 "Z" (URDF 原生)
+    "usd_variants": "maya,houdini,ue",  # 自动导出的 DCC 变体 (逗号分隔): maya / houdini / ue
     "skip_links": "force_sensor|imu|d435|mid360",  # regex; links to drop (noise)
     "face_maya": True,  # rotate rig so it faces +Z in Maya (Blender -Y forward)
     "auto_smooth": True,
@@ -840,6 +847,52 @@ def export_usd(path, units="cm", up_axis="Y"):
     bpy.ops.wm.usd_export(**kwargs)
 
 
+# ----------------------------------------------------------------------------
+# USD 变体: 一次导入自动导出多份, 各 DCC 免手工换单位/轴向
+#   maya     主文件 (路径 = --usd), cm + Y-up, 面向 +Z —— 与旧版行为完全一致
+#   houdini  _houdini 后缀, m + Y-up —— Houdini 原生米制, KineFX/SOP 不用开 Convert Units
+#   ue       _ue 后缀, cm + Z-up + URDF 原生朝向 (+X 前) —— 命中 UE 的 Z-up/厘米/前向惯例,
+#            USD Stage 演员和 Content Browser 直接导入两条路都不需要任何转换
+# ----------------------------------------------------------------------------
+USD_VARIANTS = {
+    "maya":    {"suffix": "",         "units": "cm", "up": "Y"},
+    "houdini": {"suffix": "_houdini", "units": "m",  "up": "Y"},
+    "ue":      {"suffix": "_ue",      "units": "cm", "up": "Z"},
+}
+
+
+def usd_variant_path(usd_path, suffix):
+    """g1.usda -> g1_houdini.usda (保留原扩展名; .usdc/.usdz 同样适用)"""
+    if not suffix:
+        return usd_path
+    root, ext = os.path.splitext(usd_path)
+    return root + suffix + ext
+
+
+def plan_usd_variants(usd_path, cfg):
+    """把 usd_variants 配置解析成导出计划: [{name, path, units, up, facing}]"""
+    if not usd_path:
+        return []
+    names = [v.strip().lower() for v in str(cfg.get("usd_variants", "maya,houdini,ue")).split(",")
+             if v.strip()]
+    bad = [v for v in names if v not in USD_VARIANTS]
+    if bad:
+        raise SystemExit("未知 USD 变体: %s (可用: maya, houdini, ue)" % ", ".join(bad))
+    face_maya = cfg.get("face_maya", True)
+    plan = []
+    for n in names:
+        spec = USD_VARIANTS[n]
+        if n == "maya":
+            # 主文件: 单位/朝向仍跟随 --usd-units / --usd-up (兼容旧用法)
+            path, units, up = usd_path, cfg["usd_units"], cfg.get("usd_up", "Y")
+        else:
+            path, units, up = usd_variant_path(usd_path, spec["suffix"]), spec["units"], spec["up"]
+        # Y-up 变体用 Maya 朝向 (+Z 前); Z-up (UE) 变体保持 URDF 原生朝向 (+X 前)
+        facing = "native" if (up == "Z" or not face_maya) else "maya"
+        plan.append({"name": n, "path": path, "units": units, "up": up, "facing": facing})
+    return plan
+
+
 def gui_popup(title, lines):
     """GUI 模式弹窗提示输出文件位置 (GUI 里 print 藏在系统控制台, 用户看不到).
     后台/批处理模式严禁调用 (headless 下会崩溃), 用 bpy.app.background 严格守卫."""
@@ -860,12 +913,18 @@ def gui_popup(title, lines):
 # ----------------------------------------------------------------------------
 # Metadata json (joint axes / limits, for retargeting & robotics)
 # ----------------------------------------------------------------------------
-def write_meta(urdf, keep, path, usd_units, hik_helpers=None):
+def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None):
+    if usd_files:
+        units_str = "URDF native: meters, Z-up.  USD files: " + "; ".join(
+            "%s=%s,%s-up" % (v["name"], v["units"], v["up"]) for v in usd_files)
+    else:
+        units_str = "URDF native: meters, Z-up.  USD export: %s, Y-up." % (
+            "centimeters" if usd_units == "cm" else "meters")
     data = {
         "robot": urdf.name,
         "source_urdf": os.path.basename(urdf.path),
         "generator": "g1-rig-pipeline / blender_import_urdf.py",
-        "units": "URDF native: meters, Z-up.  USD export: %s, Y-up." % ("centimeters" if usd_units == "cm" else "meters"),
+        "units": units_str,
         "root_link": urdf.root_link,
         "num_links_total": len(urdf.links),
         "num_joints_total": len(urdf.joints),
@@ -874,6 +933,17 @@ def write_meta(urdf, keep, path, usd_units, hik_helpers=None):
         "bones": sorted(keep),
         "joints": [],
     }
+    if usd_files:
+        data["usd_files"] = {
+            v["name"]: {
+                "file": os.path.basename(v["path"]),
+                "units": v["units"],
+                "up": v["up"],
+                "facing": "+X (URDF/UE 原生)" if v["facing"] == "native" else "+Z (DCC 前向)",
+                "target_dcc": {"maya": "Maya", "houdini": "Houdini", "ue": "Unreal Engine"}[v["name"]],
+            }
+            for v in usd_files
+        }
     if hik_helpers:
         valid = set(keep) | set(hik_helpers)
         data["hik"] = {
@@ -973,6 +1043,8 @@ def get_args():
     p.add_argument("--scale", type=float, default=1.0)
     p.add_argument("--usd-units", choices=["cm", "m"], default="cm")
     p.add_argument("--usd-up", choices=["Y", "Z"], default="Y")
+    p.add_argument("--usd-variants", default="maya,houdini,ue",
+                   help="逗号分隔的自动导出变体: maya,houdini,ue (默认全导; 只导主文件用 maya)")
     p.add_argument("--skip-links", default="force_sensor|imu|d435|mid360")
     p.add_argument("--keep-urdf-orientation", action="store_true",
                    help="do not rotate the rig to face Maya's +Z (keeps URDF +X facing)")
@@ -992,6 +1064,7 @@ def main():
             "urdf": args.urdf, "blend": args.blend or "", "usd": args.usd or "",
             "meta": args.meta or "", "render": args.render or "", "scale": args.scale,
             "usd_units": args.usd_units, "usd_up": args.usd_up, "skip_links": args.skip_links,
+            "usd_variants": args.usd_variants,
             "face_maya": not args.keep_urdf_orientation, "auto_smooth": not args.no_smooth,
             "auto_uv": not args.no_uv, "nice_materials": not args.flat_colors,
             "hik": not args.no_hik,
@@ -1040,8 +1113,10 @@ def main():
              "美化预设" if cfg.get("nice_materials", True) else "URDF 纯色",
              n_uv, len(meshes)))
 
+    usd_plan = plan_usd_variants(usd_path, cfg)
+
     if meta_path:
-        write_meta(urdf, keep, meta_path, cfg["usd_units"], hik_helpers)
+        write_meta(urdf, keep, meta_path, cfg["usd_units"], hik_helpers, usd_files=usd_plan)
         print("Meta   :", meta_path)
     if blend_path:
         if cfg["blend"] or bpy.app.background:
@@ -1052,9 +1127,16 @@ def main():
             # GUI 模式且未显式指定: 不往 URDF 所在目录偷偷写 12MB 文件
             print("[提示] GUI 模式默认不自动保存 .blend; 如需保存请在 CONFIG['blend'] 填路径,")
             print("       或在 Blender 里 File > Save As 手动保存 (默认建议路径: %s)" % blend_path)
-    if usd_path:
-        export_usd(usd_path, cfg["usd_units"], cfg.get("usd_up", "Y"))
-        print("USD    : %s (units=%s, up=%s)" % (usd_path, cfg["usd_units"], cfg.get("usd_up", "Y")))
+    for v in usd_plan:
+        if v["facing"] == "native":
+            arm_obj.rotation_euler = (0.0, 0.0, 0.0)   # URDF 原生: Z-up, +X 前 (UE 惯例)
+        else:
+            apply_maya_facing(arm_obj)                 # Blender -Y 前 -> USD +Z (Maya/Houdini)
+        export_usd(v["path"], v["units"], v["up"])
+        note = ", URDF 原生朝向 +X 前" if v["facing"] == "native" else ""
+        print("USD %-8s: %s (units=%s, up=%s%s)" % (v["name"], v["path"], v["units"], v["up"], note))
+    if usd_plan and cfg.get("face_maya", True):
+        apply_maya_facing(arm_obj)   # 恢复场景朝向 (blend 已保存, 不影响已导出的文件)
     if render_path:
         render_preview(render_path, arm_obj, cfg["scale"])
         print("Render :", render_path)
@@ -1063,13 +1145,17 @@ def main():
     print("=" * 72)
 
     # GUI 模式: 弹窗告诉用户文件在哪 (print 只进系统控制台, 容易看不到)
-    gui_popup("G1 导入完成 - 输出文件位置", [
-        "USD  (给 Maya): %s" % usd_path,
+    _usd_label = {"maya": "USD Maya (cm,Y-up)", "houdini": "USD Houdini (m,Y-up)",
+                  "ue": "USD UE (cm,Z-up)"}
+    popup_lines = [(_usd_label[v["name"]] + ": %s") % v["path"] for v in usd_plan]
+    popup_lines += [
         "JSON (关节元数据): %s" % meta_path,
         "Blend (可选): %s" % (blend_path if (cfg["blend"] or bpy.app.background) else "未自动保存 (File > Save As 手动保存)"),
         "",
-        "Maya 导入: File > Import 选 USD, 或用 maya_import_g1.py",
-    ])
+        "Maya: File > Import 选 USD / maya_import_g1.py",
+        "Houdini/UE: 直接用对应后缀的 _houdini / _ue 文件, 免换单位轴向",
+    ]
+    gui_popup("G1 导入完成 - 输出文件位置", popup_lines)
 
 
 if __name__ == "__main__":

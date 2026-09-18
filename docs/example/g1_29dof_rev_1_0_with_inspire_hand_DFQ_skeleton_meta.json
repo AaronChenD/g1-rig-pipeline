@@ -2,7 +2,7 @@
   "robot": "g1_29dof_rev_1_0_with_inspire_hand_DFQ",
   "source_urdf": "g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf",
   "generator": "g1-rig-pipeline / blender_import_urdf.py",
-  "units": "URDF native: meters, Z-up.  USD export: centimeters, Y-up.",
+  "units": "URDF native: meters, Z-up.  USD files: maya=cm,Y-up; houdini=m,Y-up; ue=cm,Z-up",
   "root_link": "pelvis",
   "num_links_total": 63,
   "num_joints_total": 62,
@@ -1581,6 +1581,29 @@
       }
     }
   ],
+  "usd_files": {
+    "maya": {
+      "file": "dfq.usda",
+      "units": "cm",
+      "up": "Y",
+      "facing": "+Z (DCC 前向)",
+      "target_dcc": "Maya"
+    },
+    "houdini": {
+      "file": "dfq_houdini.usda",
+      "units": "m",
+      "up": "Y",
+      "facing": "+Z (DCC 前向)",
+      "target_dcc": "Houdini"
+    },
+    "ue": {
+      "file": "dfq_ue.usda",
+      "units": "cm",
+      "up": "Z",
+      "facing": "+X (URDF/UE 原生)",
+      "target_dcc": "Unreal Engine"
+    }
+  },
   "hik": {
     "note": "MotionBuilder/Maya HumanIK 骨骼映射表; helpers 为零权重虚拟骨, 可随时删除 (骨骼上 hik_helper=True)",
     "helpers": [

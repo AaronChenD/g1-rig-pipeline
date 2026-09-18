@@ -17,6 +17,8 @@ maya_import_g1.py — 在 Maya 2025 中导入 g1-rig-pipeline 生成的 USD 骨�
 
 备注:
   - USD 由 Blender 以 metersPerUnit=0.01 (厘米) 导出, 与 Maya 默认单位一致, 无需缩放。
+  - 脚本一次会导出三份 USD: 主文件 (本文件, 给 Maya) / *_houdini.usda (米制, 给 Houdini)
+    / *_ue.usda (cm+Z-up, 给 Unreal)。Maya 只用主文件 (不带后缀的那份)。
   - 如果你导出时用了 --usd-units m (米制 USD), 请先在
     Windows > Settings/Preferences > Preferences > Settings > Working Units: Linear
     设为 meter 再导入, 或导入后调用本脚本末尾的 scale_rig(100)。
