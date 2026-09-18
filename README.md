@@ -395,6 +395,9 @@ Blender 官方从未内置 URDF 导入。本仓库脚本就是为 Blender 4.4~5.
 **Q12：USD 文件怎么变小？**
 带 UV 的 `.usda` 文本约 128 MB。把输出后缀改成 `.usdc`（二进制）约 1/3 大小，内容完全一致；`.usdz` 则是打包格式（单文件分发，Maya 2025 也能直接读）。
 
+**Q13：Maya 脚本提示找不到 USD 文件？**
+USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都会自动生成，默认保存在 **URDF 同目录**（如 `D:\...\unitree_ros\robots\g1_description\g1_..._DFQ.usda`）。GUI 模式运行完成后会**弹窗显示完整路径**（也可在 Window → Toggle System Console 看 `USD :` 那行）。把 `maya_import_g1.py` 开头的 `USD_FILE` 改成这个完整路径即可。
+
 ---
 
 ## 参考

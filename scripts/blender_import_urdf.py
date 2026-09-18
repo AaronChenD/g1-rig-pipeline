@@ -661,6 +661,23 @@ def export_usd(path, units="cm", up_axis="Y"):
     bpy.ops.wm.usd_export(**kwargs)
 
 
+def gui_popup(title, lines):
+    """GUI 模式弹窗提示输出文件位置 (GUI 里 print 藏在系统控制台, 用户看不到).
+    后台/批处理模式严禁调用 (headless 下会崩溃), 用 bpy.app.background 严格守卫."""
+    if bpy.app.background:
+        return
+    try:
+        ctx = bpy.context
+        if not getattr(ctx, "window", None):
+            return
+        def draw(self, _ctx):
+            for l in lines:
+                self.layout.label(text=l)
+        ctx.window_manager.popup_menu(draw, title=title, icon='INFO')
+    except Exception:
+        pass
+
+
 # ----------------------------------------------------------------------------
 # Metadata json (joint axes / limits, for retargeting & robotics)
 # ----------------------------------------------------------------------------
@@ -850,6 +867,15 @@ def main():
 
     print("Done in %.1fs" % (time.time() - t0))
     print("=" * 72)
+
+    # GUI 模式: 弹窗告诉用户文件在哪 (print 只进系统控制台, 容易看不到)
+    gui_popup("G1 导入完成 - 输出文件位置", [
+        "USD  (给 Maya): %s" % usd_path,
+        "JSON (关节元数据): %s" % meta_path,
+        "Blend (可选): %s" % (blend_path if (cfg["blend"] or bpy.app.background) else "未自动保存 (File > Save As 手动保存)"),
+        "",
+        "Maya 导入: File > Import 选 USD, 或用 maya_import_g1.py",
+    ])
 
 
 if __name__ == "__main__":

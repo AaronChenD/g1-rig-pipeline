@@ -27,11 +27,14 @@ Run inside Maya's Script Editor (Python tab); edit USD_FILE first.
 
 import maya.cmds as cmds
 import maya.mel as mel
+import os
 
 # ---------------------------------------------------------------------------
 # 配置 CONFIG
 # ---------------------------------------------------------------------------
 USD_FILE = r"C:\g1_rig\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda"   # <-- 改成你的路径
+# 默认生成位置: URDF 同目录, 例如
+#   D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda
 
 
 def load_usd_plugin():
@@ -103,6 +106,21 @@ def scale_rig(factor=100.0):
 
 def main():
     print("导入 USD: %s" % USD_FILE)
+    if not os.path.isfile(USD_FILE):
+        print("=" * 60)
+        print("[ERROR] 找不到 USD 文件: %s" % USD_FILE)
+        print("-" * 60)
+        print("USD 由 blender_import_urdf.py 在 Blender 里自动生成 (不需要手动导出),")
+        print("默认保存在 URDF 同目录, 例如:")
+        print(r"  D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda")
+        print("步骤:")
+        print("  1. 在 Blender 里跑一遍 blender_import_urdf.py (Run Script)")
+        print("     - 运行完会弹窗显示 USD 的完整路径; 也可开 Window > Toggle")
+        print("       System Console 看 'USD :' 那一行")
+        print("  2. 把本脚本开头的 USD_FILE 改成那个完整路径")
+        print("  3. 重新运行本脚本 (Ctrl+Enter)")
+        print("=" * 60)
+        return
     if not load_usd_plugin():
         return
     if not import_usd(USD_FILE):
