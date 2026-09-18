@@ -422,14 +422,19 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 **Q15：Houdini 21 怎么用这个 USD？USD Character Import 导入后模型/骨骼躺倒了？**
 **用 `<名称>_houdini.usda`（米制、Y-up、面向 +Z）**——2025-09 起这份文件是专门为 Houdini 烘焙的，`USD Character Import` 的三个输出（模型 / 骨骼 pose / 动画）**方向完全一致，不需要任何手动转换**。
 
-背景（两个叠加的坑，都已在此文件里修掉）：
+背景（三个叠加的坑，都已在此文件里修掉）：
 1. 该节点对**模型和骨骼两个输出不应用 USD 的根变换**（只有动画输出应用）。Blender 常规 Y-up 导出把 Z-up→Y-up 的转换旋转挂在 SkelRoot 的 xform 上——于是动画输出正常、模型和骨骼却躺倒 90°。现在生成 `_houdini` 文件时把 Y-up 旋转（含贴地抬升）**直接烘进骨骼/网格数据本身**，SkelRoot 变换恒等。
-2. **Blender 导出器把 `restTransforms` 写成了父级相对的局部变换**（USD 规范要求它与 bindTransforms 一样是骨架空间绝对值）。`USD Character Import` 的模型/骨骼输出按规范消费 rest、动画输出用 bind——局部值被当绝对值，骨架全部缩回原点附近（表现为 pelvis 在原点、差 ±90° 朝向、位置对不齐）。脚本导出后会把 restTransforms **补丁成 bindTransforms**（绑定姿势导出的文件里两者本应相等），三个输出完全一致。用法：
+2. **Blender 导出器把 `restTransforms` 写成了父级相对的局部变换**（USD 规范要求它与 bindTransforms 一样是骨架空间绝对值）。`USD Character Import` 的模型/骨骼输出按规范消费 rest、动画输出用 bind——局部值被当绝对值，骨架全部缩回原点附近（表现为 pelvis 在原点、差 ±90° 朝向、位置对不齐）。脚本导出后会把 restTransforms **补丁成 bindTransforms**（绑定姿势导出的文件里两者本应相等），三个输出完全一致。
+3. **Skeleton 没有 `skel:animationSource` 动画绑定**（节点会警告 "does not have an animation binding"）。没有绑定时动画输出回退用 bind（所以它一直是对的），但模型/骨骼输出走 rest 路径，任何数据不一致都会被放大。脚本现在会在 SkelRoot 里自动生成一个 `bind_pose` **SkelAnimation** prim（62 关节的局部平移/四元数，t=0 一帧，内容=绑定姿势），并在 Skeleton 上挂 `skel:animationSource` 指向它——三个输出从此走同一份数据。这里还有两个 USD 规范的暗坑（都踩过）：动画属性必须写成 **timeSamples**（无采样的默认值会被 pxr/Houdini 的 AnimQuery 忽略）；`scales` 的 schema 类型是 **half3[]** 而非 float3[]（类型不符整个动画静默无效）。
+
+用法：
 
 1. **Solaris（LOPs）**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `_houdini.usda` → 视口所见即所得（米制 1:1，Hydra 直接渲染 UsdSkel）。
 2. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，三个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的；Convert Units 参数开不开都行（文件已是米制）。
 3. 相关节点：`USD Animation Import`（只导骨骼+动画）、`USD Skin Import`（只导蒙皮权重）。
 
+> **怎么确认手里的 `_houdini.usda` 是最新版？** 用文本编辑器（记事本/VS Code）打开文件，**Ctrl+F 搜 `g1-rig-pipeline houdini variant v3`**（在文件头前几行）。搜不到 = 旧脚本生成的旧文件，重新跑最新脚本即可。Houdini 端记得删掉旧的 `USD Character Import` 节点重新导入（节点会缓存 USD 层）。
+>
 > 旧文件（2025-09 之前生成的）如果只有动画输出方向对：重新跑一次脚本生成新 `_houdini.usda` 即可；或临时给模型/骨骼两路加 Transform SOP 旋转 90°。
 
 **Q16：MotionBuilder 里无法创建 HIK 角色（"骨骼不够"）？能自己加虚拟骨骼吗？**

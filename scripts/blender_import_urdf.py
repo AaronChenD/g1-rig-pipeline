@@ -1019,6 +1019,148 @@ def patch_usda_rest_to_bind(path):
         return False
 
 
+def patch_usda_add_animation(path):
+    """给 .usda 的 Skeleton 加动画绑定: SkelAnimation "bind_pose" prim + skel:animationSource 关系。
+
+    Houdini 的 USD Character Import 没有 animationSource 时会警告
+    "does not have an animation binding" (动画输出回退用 bind)。这里把绑定姿势
+    本身写成一个静态 SkelAnimation (joints + 局部平移/旋转/缩放, 由 bindTransforms
+    反推: local(i) = bind(i) * bind(parent)^-1), 并在 Skeleton 上挂
+    rel skel:animationSource —— 输出3 变为数据驱动, 三输出信息完全一致。
+    纯文本操作 + 自校验 (重建链路与 bind 比对, 误差大则放弃不写)。"""
+    import re as _re
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        mj = _re.search(r"^[ \t]*uniform token\[\] joints = (\[.*\])[ \t]*$", text, _re.M)
+        mb = _re.search(r"^[ \t]*uniform matrix4d\[\] bindTransforms = (\[.*\])[ \t]*$", text, _re.M)
+        msr = _re.search(r'^[ \t]*def SkelRoot "([^"]+)"', text, _re.M)
+        if not (mj and mb and msr):
+            print("  [warn] %s: 未找到 joints/bindTransforms/SkelRoot, 跳过动画绑定" % path)
+            return False
+        joints_text = mj.group(1)
+        joints = [t.strip().strip('"') for t in joints_text.strip("[]").split(", ") if t.strip()]
+        # 解析 bindTransforms 的每个 4x4 (pxr 行向量约定: 平移在最后一行)
+        mats = []
+        for m in _re.finditer(r"\(\s*\(\s*([^()]*?)\s*\)\s*,\s*\(\s*([^()]*?)\s*\)\s*,\s*\(\s*([^()]*?)\s*\)\s*,\s*\(\s*([^()]*?)\s*\)\s*\)", mb.group(1)):
+            rows = [[float(v) for v in g.split(",")] for g in m.groups()]
+            if all(len(r) == 4 for r in rows):
+                mats.append(rows)
+        if len(mats) != len(joints):
+            print("  [warn] %s: bind 矩阵数 %d != 关节数 %d, 跳过动画绑定" % (path, len(mats), len(joints)))
+            return False
+
+        def mul(A, B):
+            return [[sum(A[i][k] * B[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
+
+        def inv(M):
+            n = 4
+            A = [row[:] + [1.0 if i == j else 0.0 for j in range(n)] for i, row in enumerate(M)]
+            for c in range(n):
+                p = max(range(c, n), key=lambda r: abs(A[r][c]))
+                if abs(A[p][c]) < 1e-12:
+                    return None
+                A[c], A[p] = A[p], A[c]
+                pv = A[c][c]
+                A[c] = [v / pv for v in A[c]]
+                for r in range(n):
+                    if r != c and A[r][c] != 0.0:
+                        f = A[r][c]
+                        A[r] = [a - f * b for a, b in zip(A[r], A[c])]
+            return [row[n:] for row in A]
+
+        def quat_from_mat3(m):
+            # m: 列向量约定 3x3 (输入前先转置); 返回 (w, x, y, z)
+            tr = m[0][0] + m[1][1] + m[2][2]
+            if tr > 0:
+                s = (tr + 1.0) ** 0.5 * 2
+                return (0.25 * s, (m[2][1] - m[1][2]) / s, (m[0][2] - m[2][0]) / s, (m[1][0] - m[0][1]) / s)
+            if m[0][0] > m[1][1] and m[0][0] > m[2][2]:
+                s = (1.0 + m[0][0] - m[1][1] - m[2][2]) ** 0.5 * 2
+                return ((m[2][1] - m[1][2]) / s, 0.25 * s, (m[0][1] + m[1][0]) / s, (m[0][2] + m[2][0]) / s)
+            if m[1][1] > m[2][2]:
+                s = (1.0 + m[1][1] - m[0][0] - m[2][2]) ** 0.5 * 2
+                return ((m[0][2] - m[2][0]) / s, (m[0][1] + m[1][0]) / s, 0.25 * s, (m[1][2] + m[2][1]) / s)
+            s = (1.0 + m[2][2] - m[0][0] - m[1][1]) ** 0.5 * 2
+            return ((m[1][0] - m[0][1]) / s, (m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, 0.25 * s)
+
+        index = {p: i for i, p in enumerate(joints)}
+        locs, quats, trans = [], [], []
+        for i, p in enumerate(joints):
+            parent = p.rsplit("/", 1)[0] if "/" in p else None
+            if parent in index:
+                Pinv = inv(mats[index[parent]])
+                if Pinv is None:
+                    print("  [warn] %s: 关节 %s 父矩阵不可逆, 跳过动画绑定" % (path, p))
+                    return False
+                L = mul(mats[i], Pinv)
+            else:
+                L = mats[i]
+            locs.append(L)
+            trans.append((L[3][0], L[3][1], L[3][2]))
+            quats.append(quat_from_mat3([[L[0][0], L[1][0], L[2][0]],
+                                         [L[0][1], L[1][1], L[2][1]],
+                                         [L[0][2], L[1][2], L[2][2]]]))
+        # 自校验: 局部链路重新累乘应还原 bind (平移误差 < 1mm)
+        world = {}
+        def wmat(i):
+            if i in world:
+                return world[i]
+            p = joints[i].rsplit("/", 1)[0] if "/" in joints[i] else None
+            W = locs[i] if p not in index else mul(locs[i], wmat(index[p]))   # 行向量: local * parent
+            world[i] = W
+            return W
+        err = max(abs(wmat(i)[3][k] - mats[i][3][k]) for i in range(len(joints)) for k in range(3))
+        if err > 1e-3:
+            print("  [warn] %s: 动画自校验误差 %.6f 过大, 跳过动画绑定" % (path, err))
+            return False
+
+        skelroot = msr.group(1)
+        anim_path = "/root/%s/bind_pose" % skelroot
+        # 两个 UsdSkelAnimation 的硬性要求 (实测 pxr/Houdini 的 AnimQuery 否则拒绝求值):
+        # 1) 属性必须写成 timeSamples —— 无采样的默认值会被忽略;
+        # 2) scales 的 schema 类型是 half3[] 而非 float3[] —— 类型不符时整个动画无效。
+        block = ("\n        def SkelAnimation \"bind_pose\"\n"
+                 "        {\n"
+                 "            uniform token[] joints = %s\n"
+                 "            quatf[] rotations.timeSamples = {\n"
+                 "                0: [%s],\n"
+                 "            }\n"
+                 "            half3[] scales.timeSamples = {\n"
+                 "                0: [%s],\n"
+                 "            }\n"
+                 "            float3[] translations.timeSamples = {\n"
+                 "                0: [%s],\n"
+                 "            }\n"
+                 "        }\n") % (
+            joints_text,
+            ", ".join("(%.9f, %.9f, %.9f, %.9f)" % q for q in quats),
+            ", ".join("(1, 1, 1)" for _ in joints),
+            ", ".join("(%.9f, %.9f, %.9f)" % t for t in trans))
+        # 1) SkelAnimation 放进 SkelRoot (插到 SkelRoot 内第一个 def Xform 之前)
+        mxf = _re.search(r"\n(        def Xform \")", text)
+        if not mxf:
+            print("  [warn] %s: 未找到插入点 (def Xform), 跳过动画绑定" % path)
+            return False
+        text = text[:mxf.start()] + "\n" + block + text[mxf.start():]
+        # 2) Skeleton 上挂 animationSource 关系 (插到 joints 属性行之前)
+        mjl = _re.search(r"(\n)([ \t]*)uniform token\[\] joints = \[", text)
+        if not mjl:
+            print("  [warn] %s: 未找到 joints 属性行, 跳过 animationSource" % path)
+            return False
+        text = text[:mjl.start()] + "\n%srel skel:animationSource = <%s>" % (mjl.group(2), anim_path) + text[mjl.start():]
+        # 3) 版本标记 (用户端 Ctrl+F 自检)
+        text = text.replace("#usda 1.0\n",
+                            "#usda 1.0\n# g1-rig-pipeline houdini variant v3: baked Y-up, SkelRoot identity,"
+                            " rest=bind, animation binding\n", 1)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return True
+    except Exception as e:
+        print("  [warn] 动画绑定补丁失败 (%s): %s" % (path, e))
+        return False
+
+
 def export_houdini_usd(path, urdf, keep, cfg, lift):
     """Houdini 专用导出: 数据直接烘成 Y-up, SkelRoot 不带任何变换。
 
@@ -1045,6 +1187,7 @@ def export_houdini_usd(path, urdf, keep, cfg, lift):
     export_usd(path, "m", "Y", convert_orientation=False)
     patch_usda_upaxis_y(path)
     patch_usda_rest_to_bind(path)
+    patch_usda_add_animation(path)
 
     # 恢复常规 Z-up 场景 (GUI 用户看到的仍是标准结果; .blend 早已保存, 不受影响)
     urdf.world.clear()
@@ -1059,7 +1202,7 @@ def export_houdini_usd(path, urdf, keep, cfg, lift):
     if cfg.get("ground", True):
         apply_ground_offset(arm_obj, meshes)
     bpy.context.view_layer.update()
-    print("USD houdini: %s (units=m, up=Y, SkelRoot 恒等-修复 Character Import 躺倒, 重建 %.0fs)"
+    print("USD houdini: %s (units=m, up=Y, SkelRoot 恒等 + rest=bind + 动画绑定, 重建 %.0fs)"
           % (path, time.time() - t0))
     return arm_obj, meshes
 
