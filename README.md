@@ -17,7 +17,7 @@
 
 | 检查项 | 实测结果 |
 |---|---|
-| 骨骼数 | 59（= 29 身体关节 + 24 灵巧手关节 + 6 结构骨骼） |
+| 骨骼数 | 59（= 29 身体关节 + 24 灵巧手关节 + 6 结构骨骼）；`--hik` 默认再加 3 根零权重虚拟骨（颈椎+双脚尖，供 MotionBuilder/Maya HIK，可随时删） |
 | 网格数 | 59 个蒙皮网格，每个 100% 权重绑到对应骨骼（刚体绑定） |
 | 整机尺寸 | 132.3 cm（与 G1 官方 ~132 cm 一致） |
 | USD 规格 | `upAxis=Y`、`metersPerUnit=0.01`（厘米）、`UsdSkel` 骨架 + 蒙皮绑定 |
@@ -412,6 +412,28 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 2. **Solaris（LOPs）直接加载**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `.usda` → 视口所见即所得（Hydra 直接渲染 UsdSkel，无需转换）。
 3. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，多个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的。另外一定要打开它的 **Convert Units** 参数（SideFX 官方文档明确：大小差 100 倍就是米/厘米单位问题，开它解决）。用米制文件 + Convert Units 后大小方向即恢复正常；若骨骼和网格仍差一个 90°，是节点丢根变换（`/root` 上有 -90°X 的 Z-up→Y-up 转换旋转）——给错位的那一路加个 Transform SOP 转 90° 即可对齐。
 4. 相关节点：`USD Animation Import`（只导骨骼+动画）、`USD Skin Import`（只导蒙皮权重）。
+
+**Q16：MotionBuilder 里无法创建 HIK 角色（"骨骼不够"）？能自己加虚拟骨骼吗？**
+可以，加虚拟骨（helper bones）正是 HIK 适配非人形骨骼的标准做法。而且有个好消息：**G1 的 HIK 15 个必需节点其实都有真实骨骼**（HIK 官方必需项：Hips / Spine / Head / 双臂各 3 / 双腿各 3，Neck 和手指都是可选）——先按下面的映射表把 Definition 填满，大多情况根本不用加骨：
+
+| HIK 槽位 | G1 骨骼 | HIK 槽位 | G1 骨骼 |
+|---|---|---|---|
+| Reference / Hips | `pelvis` | LeftArm / RightArm | `left/right_shoulder_pitch_link` |
+| Spine | `waist_yaw_link` | LeftForeArm / RightForeArm | `left/right_elbow_link` |
+| Spine1 | `waist_roll_link` | LeftHand / RightHand | `left/right_wrist_roll_link` |
+| Spine2 | `torso_link` | LeftUpLeg / RightUpLeg | `left/right_hip_pitch_link` |
+| Head | `head_link` | LeftLeg / RightLeg | `left/right_knee_link` |
+| Neck（可选） | `neck_link`（虚拟） | LeftFoot / RightFoot | `left/right_ankle_pitch_link` |
+| LeftToeBase / RightToeBase（可选） | `left/right_toe_link`（虚拟） | 手指（可选） | `L/R_thumb_proximal…` 等 22 槽全可填 |
+
+**脚本已内置 `--hik`（默认开启，`--no-hik` 关闭）**：自动补 3 根零权重虚拟骨——`neck_link`（挂在 torso 与 head 之间，让头颈重定向更平滑）、`left/right_toe_link`（挂在脚掌下，让 HIK 的脚部地板接触/foot roll 生效）。虚拟骨不带任何蒙皮权重，**之后删除对模型零影响**。映射表也写进了 `_skeleton_meta.json` 的 `hik.mapping` 字段。
+
+关于"导出时删掉虚拟骨"：
+- 它们零权重，**留着其实无害**（机器人侧按名字忽略即可，meta JSON 的 `hik.helpers` 有清单）；
+- 要删的话：MotionBuilder 里直接选中删除（先把子级重新挂回父级，如删 neck 前把 head 挂回 torso）；Maya 里删除 joint 不会影响任何 skinCluster；
+- 在 Blender 源头用 `--no-hik` 重导一份"干净版"也行。
+
+**重要的心理预期**：HIK 重定向只驱动 Definition 里映射的骨骼。G1 的大量"多余 DOF"——肩关节复合的 roll/yaw、腕部 pitch/yaw、腰的 roll/pitch、全部手指——**不会被 HIK 自动重定向**。常见处理：动捕源没有这些数据时保持默认值；需要细节时在 MB 里用 Character Extension / 约束 / 手动 K 帧补，或在 Maya 里二次处理。这也是机器人 HIK 工作流和人形角色的最大区别。
 
 
 

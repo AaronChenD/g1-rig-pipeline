@@ -53,6 +53,7 @@ CONFIG = {
     "face_maya": True,  # rotate rig so it faces +Z in Maya (Blender -Y forward)
     "auto_smooth": True,
     "auto_uv": True,          # STL 没有 UV, 自动 Smart UV Project (想自己贴图必须有 UV)
+    "hik": True,              # 补 HIK (MotionBuilder/Maya HumanIK) 虚拟骨: 颈椎+双脚尖 (零权重)
     "nice_materials": True,   # 官方无贴图; 用白壳/深灰金属预设替代 URDF 的两个纯色
 }
 
@@ -438,7 +439,91 @@ def _mode_set(obj, mode):
     )
 
 
-def build_armature(urdf, keep, scale, robot_name):
+HIK_MAPPING = [
+    # (HIK 槽位, G1 骨骼名) — 15 个必需节点 + 常用可选节点
+    ("Reference", "pelvis"),
+    ("Hips", "pelvis"),
+    ("Spine", "waist_yaw_link"),
+    ("Spine1", "waist_roll_link"),
+    ("Spine2", "torso_link"),          # HIK 假设手臂连在最后一个 spine 节点 (正好是 torso)
+    ("Neck", "neck_link"),             # 虚拟骨 (--hik 自动添加)
+    ("Head", "head_link"),
+    ("LeftArm", "left_shoulder_pitch_link"),
+    ("LeftForeArm", "left_elbow_link"),
+    ("LeftHand", "left_wrist_roll_link"),
+    ("RightArm", "right_shoulder_pitch_link"),
+    ("RightForeArm", "right_elbow_link"),
+    ("RightHand", "right_wrist_roll_link"),
+    ("LeftUpLeg", "left_hip_pitch_link"),
+    ("LeftLeg", "left_knee_link"),
+    ("LeftFoot", "left_ankle_pitch_link"),
+    ("LeftToeBase", "left_toe_link"),  # 虚拟骨 (--hik 自动添加)
+    ("RightUpLeg", "right_hip_pitch_link"),
+    ("RightLeg", "right_knee_link"),
+    ("RightFoot", "right_ankle_pitch_link"),
+    ("RightToeBase", "right_toe_link"),
+    # 手指 (可选; Inspire 灵巧手正好能填满)
+    ("LeftHandThumb1", "L_thumb_proximal_base"),
+    ("LeftHandThumb2", "L_thumb_proximal"),
+    ("LeftHandThumb3", "L_thumb_intermediate"),
+    ("LeftHandIndex1", "L_index_proximal"),
+    ("LeftHandIndex2", "L_index_intermediate"),
+    ("LeftHandMiddle1", "L_middle_proximal"),
+    ("LeftHandMiddle2", "L_middle_intermediate"),
+    ("LeftHandRing1", "L_ring_proximal"),
+    ("LeftHandRing2", "L_ring_intermediate"),
+    ("LeftHandPinky1", "L_pinky_proximal"),
+    ("LeftHandPinky2", "L_pinky_intermediate"),
+    ("RightHandThumb1", "R_thumb_proximal_base"),
+    ("RightHandThumb2", "R_thumb_proximal"),
+    ("RightHandThumb3", "R_thumb_intermediate"),
+    ("RightHandIndex1", "R_index_proximal"),
+    ("RightHandIndex2", "R_index_intermediate"),
+    ("RightHandMiddle1", "R_middle_proximal"),
+    ("RightHandMiddle2", "R_middle_intermediate"),
+    ("RightHandRing1", "R_ring_proximal"),
+    ("RightHandRing2", "R_ring_intermediate"),
+    ("RightHandPinky1", "R_pinky_proximal"),
+    ("RightHandPinky2", "R_pinky_intermediate"),
+]
+
+
+def add_hik_helper_bones(urdf, arm_data, scale):
+    """为 MotionBuilder/Maya HumanIK 补 3 根零权重虚拟骨: 颈椎 + 双脚尖.
+    G1 的 15 个 HIK 必需节点都有真实骨骼, 但 Neck 能让头颈重定向更平滑,
+    ToeBase 能让 HIK 的脚部地板接触 (floor contact) / foot roll 生效.
+    虚拟骨不绑任何网格顶点 -> 之后删除它们对模型零影响."""
+    eb = arm_data.edit_bones
+    helpers = []
+    # --- Neck: 插在 torso_link 与 head_link 之间 ---
+    head_bone = eb.get("head_link")
+    torso_bone = eb.get("torso_link")
+    if head_bone is not None and torso_bone is not None:
+        neck = eb.new("neck_link")
+        p0, p1 = torso_bone.head.copy(), head_bone.head.copy()
+        neck.head = p0.lerp(p1, 0.55)
+        neck.tail = p1
+        neck.parent = torso_bone
+        neck.align_roll(Vector((0.0, 0.0, 1.0)))
+        head_bone.parent = neck
+        helpers.append("neck_link")
+    # --- Toes: 挂在 ankle_roll 下, 指向脚尖 (URDF 前进方向 = +X) ---
+    for side in ("left", "right"):
+        ankle = eb.get(side + "_ankle_roll_link")
+        if ankle is None:
+            continue
+        toe = eb.new(side + "_toe_link")
+        fwd = Vector((1.0, 0.0, 0.0)) * scale
+        down = Vector((0.0, 0.0, -1.0)) * scale
+        toe.head = ankle.head + fwd * 0.06 + down * 0.02
+        toe.tail = ankle.head + fwd * 0.16 + down * 0.02
+        toe.parent = ankle
+        toe.align_roll(Vector((0.0, 0.0, 1.0)))
+        helpers.append(side + "_toe_link")
+    return helpers
+
+
+def build_armature(urdf, keep, scale, robot_name, hik=True):
     arm_data = bpy.data.armatures.new(robot_name + "_skeleton")
     arm_obj = bpy.data.objects.new(robot_name + "_skeleton", arm_data)
     bpy.context.scene.collection.objects.link(arm_obj)
@@ -484,6 +569,9 @@ def build_armature(urdf, keep, scale, robot_name):
         par = urdf.joint_parent_link(j) if j is not None else None
         if par in eb:
             eb[name].parent = eb[par]
+    hik_helpers = []
+    if hik:
+        hik_helpers = add_hik_helper_bones(urdf, arm_data, scale)
     _mode_set(arm_obj, "OBJECT")
 
     # ---- joint metadata as bone custom properties ----------------------------
@@ -502,7 +590,12 @@ def build_armature(urdf, keep, scale, robot_name):
             bone["urdf_limit_upper"] = float(lim.get("upper", "0"))
             bone["urdf_limit_effort"] = float(lim.get("effort", "0"))
             bone["urdf_limit_velocity"] = float(lim.get("velocity", "0"))
-    return arm_obj, arm_data
+    # HIK 虚拟骨标记 (导出/清理时按此识别)
+    for hname in hik_helpers:
+        bone = arm_data.bones.get(hname)
+        if bone is not None:
+            bone["hik_helper"] = True
+    return arm_obj, arm_data, hik_helpers
 
 
 def _ctx_override(**overrides):
@@ -707,7 +800,7 @@ def gui_popup(title, lines):
 # ----------------------------------------------------------------------------
 # Metadata json (joint axes / limits, for retargeting & robotics)
 # ----------------------------------------------------------------------------
-def write_meta(urdf, keep, path, usd_units):
+def write_meta(urdf, keep, path, usd_units, hik_helpers=None):
     data = {
         "robot": urdf.name,
         "source_urdf": os.path.basename(urdf.path),
@@ -721,6 +814,14 @@ def write_meta(urdf, keep, path, usd_units):
         "bones": sorted(keep),
         "joints": [],
     }
+    if hik_helpers:
+        valid = set(keep) | set(hik_helpers)
+        data["hik"] = {
+            "note": "MotionBuilder/Maya HumanIK 骨骼映射表; helpers 为零权重虚拟骨, 可随时删除 (骨骼上 hik_helper=True)",
+            "helpers": sorted(hik_helpers),
+            "required_15_filled": True,
+            "mapping": {slot: bone for slot, bone in HIK_MAPPING if bone in valid},
+        }
     for name in sorted(keep):
         j = urdf.joint_by_child.get(name)
         if j is None:
@@ -817,6 +918,8 @@ def get_args():
                    help="do not rotate the rig to face Maya's +Z (keeps URDF +X facing)")
     p.add_argument("--no-smooth", action="store_true")
     p.add_argument("--no-uv", action="store_true", help="跳过自动展 UV (STL 默认无 UV)")
+    p.add_argument("--no-hik", action="store_true",
+                   help="不加 HIK 虚拟骨 (颈椎/脚尖; MotionBuilder 重定向用, 零权重可随时删)")
     p.add_argument("--flat-colors", action="store_true",
                    help="严格用 URDF 的两个纯色 (0.7 白 / 0.2 深灰), 不用美化材质预设")
     return p.parse_args(argv)
@@ -831,6 +934,7 @@ def main():
             "usd_units": args.usd_units, "usd_up": args.usd_up, "skip_links": args.skip_links,
             "face_maya": not args.keep_urdf_orientation, "auto_smooth": not args.no_smooth,
             "auto_uv": not args.no_uv, "nice_materials": not args.flat_colors,
+            "hik": not args.no_hik,
         }
     else:
         cfg = dict(CONFIG)
@@ -859,12 +963,16 @@ def main():
         print("  [note] robot name from URDF: %r" % urdf.name)
 
     _coll, meshes_coll = fresh_scene(urdf.name)
-    arm_obj, arm_data = build_armature(urdf, keep, cfg["scale"], urdf.name)
+    arm_obj, arm_data, hik_helpers = build_armature(urdf, keep, cfg["scale"], urdf.name,
+                                                    cfg.get("hik", True))
     meshes = skin_meshes(urdf, keep, cfg["scale"], arm_obj, meshes_coll, cfg["auto_smooth"],
                          cfg.get("nice_materials", True), cfg.get("auto_uv", True))
     if cfg.get("face_maya", True):
         apply_maya_facing(arm_obj)
     print("Built  : %d bones, %d mesh objects" % (len(arm_data.bones), len(meshes)))
+    if hik_helpers:
+        print(" HIK   : + %d helper bones (%s) - 零权重, 重定向用, 可删"
+              % (len(hik_helpers), ", ".join(hik_helpers)))
     n_uv = sum(1 for o in meshes if o.data.uv_layers.active is not None)
     n_mat = len({o.data.materials[0].name for o in meshes if o.data.materials})
     print(" Mats  : %d materials (URDF 无贴图, %s) | UV: %d/%d meshes unwrapped"
@@ -873,7 +981,7 @@ def main():
              n_uv, len(meshes)))
 
     if meta_path:
-        write_meta(urdf, keep, meta_path, cfg["usd_units"])
+        write_meta(urdf, keep, meta_path, cfg["usd_units"], hik_helpers)
         print("Meta   :", meta_path)
     if blend_path:
         if cfg["blend"] or bpy.app.background:
