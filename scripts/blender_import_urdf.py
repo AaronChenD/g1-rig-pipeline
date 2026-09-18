@@ -1019,7 +1019,7 @@ def patch_usda_rest_to_bind(path):
         return False
 
 
-def patch_usda_add_animation(path):
+def patch_usda_add_animation(path, pose_name="zero"):
     """给 .usda 的 Skeleton 加动画绑定: SkelAnimation "bind_pose" prim + skel:animationSource 关系。
 
     Houdini 的 USD Character Import 没有 animationSource 时会警告
@@ -1149,10 +1149,10 @@ def patch_usda_add_animation(path):
             print("  [warn] %s: 未找到 joints 属性行, 跳过 animationSource" % path)
             return False
         text = text[:mjl.start()] + "\n%srel skel:animationSource = <%s>" % (mjl.group(2), anim_path) + text[mjl.start():]
-        # 3) 版本标记 (用户端 Ctrl+F 自检)
+        # 3) 版本标记 (用户端 Ctrl+F 自检; pose= 告诉你这份文件是哪个绑定姿势)
         text = text.replace("#usda 1.0\n",
                             "#usda 1.0\n# g1-rig-pipeline houdini variant v3: baked Y-up, SkelRoot identity,"
-                            " rest=bind, animation binding\n", 1)
+                            " rest=bind, animation binding, pose=%s\n" % pose_name, 1)
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
         return True
@@ -1187,7 +1187,7 @@ def export_houdini_usd(path, urdf, keep, cfg, lift):
     export_usd(path, "m", "Y", convert_orientation=False)
     patch_usda_upaxis_y(path)
     patch_usda_rest_to_bind(path)
-    patch_usda_add_animation(path)
+    patch_usda_add_animation(path, cfg.get("pose", "zero"))
 
     # 恢复常规 Z-up 场景 (GUI 用户看到的仍是标准结果; .blend 早已保存, 不受影响)
     urdf.world.clear()
@@ -1388,6 +1388,8 @@ def get_args():
 
 def main():
     args = get_args()
+    print("g1-rig-pipeline blender_import_urdf.py  (houdini usd variant v3; pose=%s)"
+          % getattr(args, "pose", "?"))
     if args:
         cfg = {
             "urdf": args.urdf, "blend": args.blend or "", "usd": args.usd or "",
