@@ -160,20 +160,58 @@ def _row16_from_matrix(m_col):
     return [float(v) for row in t for v in row]
 
 
+# ---- meta 解析: 两种目录布局自动互备 (G1 平铺 <-> unitree_ros 深层) ----
+# 旧版/缺失时自动去另一布局找新版 meta, 找到就用 (打印 note)。
+
+def _alt_meta_path(path):
+    d, b = os.path.split(path)
+    deep = os.path.join("unitree_ros", "robots", "g1_description")
+    if d.endswith(deep):
+        return os.path.join(d[: -len(deep) - 1], b)
+    return os.path.join(d, deep, b)
+
+
+def _load_meta(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _meta_v2(m):
+    return bool(m) and bool(m.get("root_bind16")) and any(
+        "bind_local16" in e and "axis_parent_local" in e for e in m.get("joints", []))
+
+
+def resolve_meta(path, need_v2=True):
+    """读 meta; 缺失或 (need_v2 时) 为旧版则自动试另一布局。都失败返回原结果/None。"""
+    m = _load_meta(path)
+    if m is not None and (not need_v2 or _meta_v2(m)):
+        return m
+    alt = _alt_meta_path(path)
+    m2 = _load_meta(alt)
+    if m2 is not None and (not need_v2 or _meta_v2(m2)):
+        print("[meta] note: %s 缺失或为旧版, 改用 %s" % (path, alt))
+        return m2
+    return m
+
 def run(cfg):
     import bpy  # 延迟 import, 便于其他软件参考 CORE 逻辑
 
-    try:
-        with open(cfg["meta"], "r", encoding="utf-8") as f:
-            meta = json.load(f)
-    except FileNotFoundError:
-        _die("找不到 meta: %s\nmeta 由 blender_import_urdf.py 生成 (在 URDF 同目录),\n"
-             "请在脚本头部 CONFIG['meta'] 填入实际路径" % cfg["meta"])
+    meta = resolve_meta(cfg["meta"])
+    if meta is None:
+        _die("找不到 meta (两种布局都试过):\n  %s\n  %s\n"
+             "meta 由 blender_import_urdf.py 生成 (URDF 同目录)"
+             % (cfg["meta"], _alt_meta_path(cfg["meta"])))
     joints = [e for e in meta["joints"]
               if "bind_local16" in e and "axis_parent_local" in e]
-    if not joints:
-        _die("meta 里没有 bind_local16/axis_parent_local —— 请用 2025-09-19 "
-             "之后的 blender_import_urdf.py 重新生成 meta (旧版 meta 不兼容)")
+    if not joints or not meta.get("root_bind16"):
+        _die("meta 是旧版 (缺 bind_local16/axis_parent_local/root_bind16), 两个候选路径都没有新版:\n"
+             "  %s\n  %s\n"
+             "解决: 在 Blender 里重新 Run 一遍新版 blender_import_urdf.py 生成新 meta\n"
+             "(不影响你已 K 好动画的 .blend — 导出器只按骨骼名匹配, 动画不用重 K)"
+             % (cfg["meta"], _alt_meta_path(cfg["meta"])))
     jmap = {e["bone"]: e for e in joints}
 
     arm_obj = None

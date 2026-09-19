@@ -27,6 +27,42 @@ CONFIG = {
 }
 
 
+# ---- meta 解析: 两种目录布局自动互备 (G1 平铺 <-> unitree_ros 深层) ----
+# 旧版/缺失时自动去另一布局找新版 meta, 找到就用 (打印 note)。
+
+def _alt_meta_path(path):
+    d, b = os.path.split(path)
+    deep = os.path.join("unitree_ros", "robots", "g1_description")
+    if d.endswith(deep):
+        return os.path.join(d[: -len(deep) - 1], b)
+    return os.path.join(d, deep, b)
+
+
+def _load_meta(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _meta_v2(m):
+    return bool(m) and bool(m.get("root_bind16")) and any(
+        "bind_local16" in e and "axis_parent_local" in e for e in m.get("joints", []))
+
+
+def resolve_meta(path, need_v2=True):
+    """读 meta; 缺失或 (need_v2 时) 为旧版则自动试另一布局。都失败返回原结果/None。"""
+    m = _load_meta(path)
+    if m is not None and (not need_v2 or _meta_v2(m)):
+        return m
+    alt = _alt_meta_path(path)
+    m2 = _load_meta(alt)
+    if m2 is not None and (not need_v2 or _meta_v2(m2)):
+        print("[meta] note: %s 缺失或为旧版, 改用 %s" % (path, alt))
+        return m2
+    return m
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--meta", default=CONFIG["meta"])
@@ -37,11 +73,11 @@ def main():
 
     import numpy as np
 
-    try:
-        with open(args.meta, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-    except FileNotFoundError:
-        print("[demo][ERROR] 找不到 meta 文件: %s" % args.meta)
+    meta = resolve_meta(args.meta, need_v2=False)
+    if meta is None:
+        print("[demo][ERROR] 找不到 meta 文件 (两种布局都试过):")
+        print("  " + args.meta)
+        print("  " + _alt_meta_path(args.meta))
         print("  meta 是 Blender 里 blender_import_urdf.py 生成的, 写在 URDF 同目录")
         print("  (文件名 = <URDF名>_skeleton_meta.json)。两个办法:")
         print("  1) 搜索现有 meta (找到后用 --meta <路径> 指定, 文件名 Tab 补全):")

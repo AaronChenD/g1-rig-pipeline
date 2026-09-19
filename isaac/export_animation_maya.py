@@ -154,17 +154,56 @@ def _yupcm_world16_to_zupm(m, cmds):
     return tuple(out)
 
 
+# ---- meta 解析: 两种目录布局自动互备 (G1 平铺 <-> unitree_ros 深层) ----
+# 旧版/缺失时自动去另一布局找新版 meta, 找到就用 (打印 note)。
+
+def _alt_meta_path(path):
+    d, b = os.path.split(path)
+    deep = os.path.join("unitree_ros", "robots", "g1_description")
+    if d.endswith(deep):
+        return os.path.join(d[: -len(deep) - 1], b)
+    return os.path.join(d, deep, b)
+
+
+def _load_meta(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def _meta_v2(m):
+    return bool(m) and bool(m.get("root_bind16")) and any(
+        "bind_local16" in e and "axis_parent_local" in e for e in m.get("joints", []))
+
+
+def resolve_meta(path, need_v2=True):
+    """读 meta; 缺失或 (need_v2 时) 为旧版则自动试另一布局。都失败返回原结果/None。"""
+    m = _load_meta(path)
+    if m is not None and (not need_v2 or _meta_v2(m)):
+        return m
+    alt = _alt_meta_path(path)
+    m2 = _load_meta(alt)
+    if m2 is not None and (not need_v2 or _meta_v2(m2)):
+        print("[meta] note: %s 缺失或为旧版, 改用 %s" % (path, alt))
+        return m2
+    return m
+
 def run(cfg):
     import maya.cmds as cmds
 
-    with open(cfg["meta"], "r", encoding="utf-8") as f:
-        meta = json.load(f)
+    meta = resolve_meta(cfg["meta"])
+    if meta is None:
+        raise RuntimeError("找不到 meta (两种布局都试过):\n  %s\n  %s"
+                           % (cfg["meta"], _alt_meta_path(cfg["meta"])))
     joints = [e for e in meta["joints"]
               if "bind_local16" in e and "axis_parent_local" in e]
     root_bind16 = meta.get("root_bind16")
     if not joints or not root_bind16:
-        raise RuntimeError("meta 缺 bind_local16/axis_parent_local/root_bind16 —— "
-                           "请用 2025-09-19 之后的 blender_import_urdf.py 重新生成")
+        raise RuntimeError("meta 是旧版 (缺 bind_local16/axis_parent_local/root_bind16), 备选路径也无新版:\n"
+                           "  %s\n  %s\n请在 Blender 里重新 Run 一遍新版 blender_import_urdf.py"
+                           % (cfg["meta"], _alt_meta_path(cfg["meta"])))
     jmap = {e["bone"]: e for e in joints}
 
     # ---- 收集关节, 剥命名空间 ----
