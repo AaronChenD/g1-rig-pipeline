@@ -52,7 +52,11 @@ joint_names = list(motion.dtype.names)  # 关节顺序见 _columns.json
 
 ### Blender（`export_animation_blender.py`）
 
-GUI：Scripting 标签打开，改文件头 `CONFIG`（meta/out/帧范围），Run。
+GUI（推荐）：打开你的动画 `.blend` → 顶部 **Scripting（脚本）** 工作区 →
+文本编辑器里 **Open（打开）** 本脚本 → 改文件头 `CONFIG`（meta / out 前缀；
+帧范围和 fps 留 None = 自动取场景设置）→ 点 **▶ Run Script（运行脚本）**。
+运行日志在 **窗口 → 切换系统控制台**（Window → Toggle System Console）里看，
+结束后回场景另存即可。
 
 命令行批处理：
 
@@ -242,7 +246,19 @@ cd C:\isaac-lab
 
 ### 3. 回放我们导出的动捕动画（`replay_trajectory_isaaclab.py`）
 
-把本目录的 `replay_trajectory_isaaclab.py` 和导出的 `g1_anim.npy`（及 `_columns.json`）放好，然后：
+**脚本更新**：本仓库 `git pull` 即可（脚本与资产路径解耦：`CONFIG` 默认指向
+`D:\BlenderPro\G1\`，仓库 clone 到哪里都行；两个 `.bat` 与 `.py` 同目录）。
+
+最省事——用本目录的 `replay_g1.bat`（在仓库 isaac/ 目录里，任何终端甚至资源
+管理器地址栏都能跑；它自动调用 `C:\isaac-lab\isaaclab.bat`，装在别处就先
+`set ISAACLAB_BAT=...`）：
+
+```bat
+D:\BlenderPro\G1\replay_g1.bat D:\BlenderPro\G1\myanim.npy --loop
+D:\BlenderPro\G1\replay_g1.bat D:\BlenderPro\G1\myanim.npy --usd D:\BlenderPro\G1\g1_dfq.usd --loop
+```
+
+或者手动完整命令（`.bat` 内容就是这个）：
 
 ```bat
 cd C:\isaac-lab

@@ -53,7 +53,7 @@ import xml.etree.ElementTree as ET
 # CONFIG - used when running from the Blender GUI (Scripting tab)
 # ----------------------------------------------------------------------------
 CONFIG = {
-    "urdf":   r"D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf",
+    "urdf":   r"D:\BlenderPro\G1\g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf",
     "blend":  r"",    # optional: save .blend next to the URDF if left empty
     "usd":    r"",    # optional: export USD next to the URDF if left empty
     "meta":   r"",    # optional: joint metadata .json path
