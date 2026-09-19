@@ -73,6 +73,32 @@ CONFIG = {
     "nice_materials": True,   # 官方无贴图; 用白壳/深灰金属预设替代 URDF 的两个纯色
 }
 
+# ---------------------------------------------------------------------------
+# GUI 安全报错退出
+# 在 Blender GUI 里运行时, SystemExit 会把整个 Blender 直接关闭 (表现为"闪退"),
+# 绝不能在 GUI 路径上用。GUI: 弹窗 + 控制台打印 + RuntimeError (由 Blender 捕获);
+# 命令行 (带 '--' 参数): 才用 SystemExit。
+_GUI = False
+
+
+def _die(msg):
+    print("[g1-rig] ERROR: " + msg)
+    if _GUI:
+        try:
+            import bpy
+            import textwrap
+
+            def _draw(self, _ctx):
+                for line in textwrap.wrap(msg, 56)[:12]:
+                    self.layout.label(text=line)
+
+            bpy.context.window_manager.popup_menu(_draw, title="g1-rig-pipeline", icon='ERROR')
+        except Exception:
+            pass
+        raise RuntimeError(msg)      # GUI: 被文本编辑器捕获, 只报错不退出
+    raise SystemExit(msg)            # 命令行: 正常非零退出
+
+
 # ----------------------------------------------------------------------------
 # URDF parsing
 # ----------------------------------------------------------------------------
@@ -947,7 +973,7 @@ def plan_usd_variants(usd_path, cfg):
              if v.strip()]
     bad = [v for v in names if v not in USD_VARIANTS]
     if bad:
-        raise SystemExit("未知 USD 变体: %s (可用: maya, houdini, ue)" % ", ".join(bad))
+        _die("未知 USD 变体: %s (可用: maya, houdini, ue)" % ", ".join(bad))
     face_maya = cfg.get("face_maya", True)
     plan = []
     for n in names:
@@ -1431,7 +1457,9 @@ def get_args():
 
 
 def main():
+    global _GUI
     args = get_args()
+    _GUI = args is None   # True = 从 Blender GUI 运行 (此时禁止 SystemExit)
     print("g1-rig-pipeline blender_import_urdf.py  (houdini usd variant v3; pose=%s)"
           % getattr(args, "pose", "?"))
     if args:
@@ -1451,7 +1479,15 @@ def main():
     t0 = time.time()
     urdf_path = os.path.abspath(cfg["urdf"])
     if not os.path.isfile(urdf_path):
-        raise SystemExit("URDF not found: %s  (edit CONFIG at the top of the script, or pass a path)" % urdf_path)
+        # 兼容旧目录布局: D:\...\G1\<urdf> 不在时, 试 D:\...\G1\unitree_ros\robots\g1_description\<urdf>
+        cand = os.path.join(os.path.dirname(urdf_path), "unitree_ros", "robots",
+                            "g1_description", os.path.basename(urdf_path))
+        if os.path.isfile(cand):
+            print("[g1-rig] note: %s 不存在, 改用旧布局路径 %s" % (urdf_path, cand))
+            urdf_path = cand
+        else:
+            _die("URDF not found: %s\n(也试过旧布局: %s)\n"
+                 "请在脚本头部 CONFIG['urdf'] 填入实际 URDF 路径" % (urdf_path, cand))
     out_dir = os.path.dirname(urdf_path)
     base = os.path.splitext(os.path.basename(urdf_path))[0]
     blend_path = cfg["blend"] or os.path.join(out_dir, base + ".blend")

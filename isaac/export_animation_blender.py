@@ -34,6 +34,29 @@ CONFIG = {
 }
 # -----------------------------------------------------------------------------
 
+# GUI 安全报错: 在 Blender GUI 里 SystemExit 会直接关闭 Blender ("闪退"),
+# GUI 路径只弹窗 + 打印 + RuntimeError (由 Blender 捕获); 命令行才 SystemExit。
+_GUI = False
+
+
+def _die(msg):
+    print("[export] ERROR: " + msg)
+    if _GUI:
+        try:
+            import bpy
+            import textwrap
+
+            def _draw(self, _ctx):
+                for line in textwrap.wrap(msg, 56)[:12]:
+                    self.layout.label(text=line)
+
+            bpy.context.window_manager.popup_menu(_draw, title="export_animation", icon='ERROR')
+        except Exception:
+            pass
+        raise RuntimeError(msg)
+    raise SystemExit(msg)
+
+
 # ==================== CORE v1 (与 Maya/MotionBuilder 版完全一致) ============
 # 约定: 16 元组 = 行主序 4x4, 行向量 (v*M), 与 pxr/Maya MMatrix/MotionBuilder 一致。
 
@@ -140,13 +163,17 @@ def _row16_from_matrix(m_col):
 def run(cfg):
     import bpy  # 延迟 import, 便于其他软件参考 CORE 逻辑
 
-    with open(cfg["meta"], "r", encoding="utf-8") as f:
-        meta = json.load(f)
+    try:
+        with open(cfg["meta"], "r", encoding="utf-8") as f:
+            meta = json.load(f)
+    except FileNotFoundError:
+        _die("找不到 meta: %s\nmeta 由 blender_import_urdf.py 生成 (在 URDF 同目录),\n"
+             "请在脚本头部 CONFIG['meta'] 填入实际路径" % cfg["meta"])
     joints = [e for e in meta["joints"]
               if "bind_local16" in e and "axis_parent_local" in e]
     if not joints:
-        raise SystemExit("meta 里没有 bind_local16/axis_parent_local —— 请用 2025-09-19 "
-                         "之后的 blender_import_urdf.py 重新生成 meta")
+        _die("meta 里没有 bind_local16/axis_parent_local —— 请用 2025-09-19 "
+             "之后的 blender_import_urdf.py 重新生成 meta (旧版 meta 不兼容)")
     jmap = {e["bone"]: e for e in joints}
 
     arm_obj = None
@@ -156,7 +183,7 @@ def run(cfg):
                 arm_obj = o
                 break
     if arm_obj is None:
-        raise SystemExit("场景里找不到 Armature")
+        _die("场景里找不到 Armature — 请打开管线生成的 .blend 再运行")
 
     scene = bpy.context.scene
     f0 = int(cfg["frame_start"] if cfg["frame_start"] is not None else scene.frame_start)
@@ -166,10 +193,10 @@ def run(cfg):
     root_bone = meta["root_link"]
     root_bind16 = meta.get("root_bind16")
     if not root_bind16:
-        raise SystemExit("meta 缺 root_bind16 —— 请用新版 blender_import_urdf.py 重新生成")
+        _die("meta 缺 root_bind16 —— 请用新版 blender_import_urdf.py 重新生成")
     pb_root = arm_obj.pose.bones.get(root_bone)
     if pb_root is None:
-        raise SystemExit("骨架里没有根骨 %s" % root_bone)
+        _die("骨架里没有根骨 %s — 请确认打开的是管线生成的 .blend" % root_bone)
 
     rows, stats = [], {e["joint"]: {"clip": 0, "res_max": 0.0} for e in joints}
     for f in range(f0, f1 + 1):
@@ -264,6 +291,8 @@ def _write_outputs(cfg, meta, joints, rows, fps, stats):
 
 
 def main():
+    global _GUI
+    _GUI = "--" not in sys.argv      # 无 '--' = 从 Blender GUI 运行
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     for i in range(0, len(argv) - 1, 2):
         k = argv[i].lstrip("-").replace("-", "_")

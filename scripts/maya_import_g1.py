@@ -116,15 +116,36 @@ def scale_rig(factor=100.0):
     print("[OK] 已缩放 ×%g" % factor)
 
 
+def _resolve_usd():
+    """USD_FILE 不存在时, 自动试另一种目录布局 (G1 平铺 / unitree_ros 深层)。"""
+    cands = [USD_FILE]
+    d, b = os.path.split(USD_FILE)
+    deep = os.path.join("unitree_ros", "robots", "g1_description")
+    if d.endswith(deep):
+        cands.append(os.path.join(d[: -len(deep) - 1], b))       # 深层 -> 平铺
+    else:
+        cands.append(os.path.join(d, deep, b))                    # 平铺 -> 深层
+    for c in cands:
+        if os.path.isfile(c):
+            return c
+    return cands[0]
+
+
 def main():
-    print("导入 USD: %s" % USD_FILE)
-    if not os.path.isfile(USD_FILE):
+    usd = _resolve_usd()
+    alt = os.path.join(os.path.dirname(USD_FILE), "unitree_ros", "robots",
+                       "g1_description", os.path.basename(USD_FILE))
+    if usd != USD_FILE and os.path.isfile(usd):
+        print("[note] %s 不存在, 改用 %s" % (USD_FILE, usd))
+    print("导入 USD: %s" % usd)
+    if not os.path.isfile(usd):
         print("=" * 60)
-        print("[ERROR] 找不到 USD 文件: %s" % USD_FILE)
+        print("[ERROR] 找不到 USD 文件, 试过以下位置:")
+        print("  " + usd)
+        print("  " + alt)
         print("-" * 60)
         print("USD 由 blender_import_urdf.py 在 Blender 里自动生成 (不需要手动导出),")
-        print("默认保存在 URDF 同目录, 例如:")
-        print(r"  D:\BlenderPro\G1\unitree_ros\robots\g1_description\g1_29dof_rev_1_0_with_inspire_hand_DFQ.usda")
+        print("默认保存在 URDF 同目录。")
         print("步骤:")
         print("  1. 在 Blender 里跑一遍 blender_import_urdf.py (Run Script)")
         print("     - 运行完会弹窗显示 USD 的完整路径; 也可开 Window > Toggle")
@@ -135,7 +156,7 @@ def main():
         return
     if not load_usd_plugin():
         return
-    if not import_usd(USD_FILE):
+    if not import_usd(usd):
         return
     report()
 
