@@ -149,24 +149,45 @@ Get-ChildItem "C:\isaac-lab" -Filter *.bat -Recurse | ForEach-Object {
 
 验证 bat 修好了：`.\isaaclab.bat --help` 应打印 usage 帮助而不是报错。
 
-如果运行时报找不到 Isaac Sim，按官方文档设环境变量（你的 Sim 装在 `C:\isaac-sim`）：
+### 1.2 bat 找不到 Isaac Sim / 用错 Python（症状同上：找不到 Python executable）
 
-```bat
-setx ISAACSIM_PATH "C:\isaac-sim"
+**Isaac Lab 2.3.0 的 `isaaclab.bat` 不读 `ISAACSIM_PATH` 环境变量**（已核对官方源码：
+它只认 ① conda 环境 ② `C:\isaac-lab\_isaac_sim\python.bat` ③ 兜底抓 PATH 里的系统
+Python——最后这条是灾难，会把包装进错误的 Python）。zip 安装没有 `_isaac_sim`，
+所以必须手动建一个 junction（一次性，无需管理员）：
+
+```powershell
+cmd /c mklink /J "C:\isaac-lab\_isaac_sim" "C:\isaac-sim"
+Test-Path C:\isaac-lab\_isaac_sim\python.bat    # 应输出 True
 ```
 
-（新开一个终端生效；仅当前会话用 `set ISAACSIM_PATH=C:\isaac-sim` 或 PowerShell 的
-`$env:ISAACSIM_PATH = "C:\isaac-sim"`。）
+> 判断是否中招：`-i` 安装日志里的 pip 报错路径出现
+> `AppData\Local\Programs\Python\Python312`（系统 Python）而不是 isaac-sim 的
+> 路径 = bat 用错了 Python。新版（3.x）的 bat 才读 `ISAACSIM_PATH`。
 
 ### 2. 验证安装（第一次必做）
 
 > **zip 安装的用户**：zip 里只是源码，必须先把 Isaac Lab 装进 Sim 的 Python
-> （需联网，几分钟~十几分钟），否则任何脚本都会 `ModuleNotFoundError: isaaclab`：
+> （需联网，会下载 PyTorch 等数 GB，耐心），否则任何脚本都会
+> `ModuleNotFoundError: isaaclab`：
 >
 > ```powershell
 > cd C:\isaac-lab
 > .\isaaclab.bat -i
 > ```
+>
+> **先做一步预修**：isaaclab 依赖的 `flatdict==4.0.1` 是 2021 年的老源码包，
+> 其 setup.py 用的 `pkg_resources` 已被新版 setuptools 移除 → pip 构建必炸
+> （`ModuleNotFoundError: No module named 'pkg_resources'`）。在 Sim 的 Python 里
+> 预装一份旧 setuptools 再关掉构建隔离装 flatdict：
+>
+> ```powershell
+> & "C:\isaac-sim\python.bat" -m pip install "setuptools<81" wheel
+> & "C:\isaac-sim\python.bat" -m pip install flatdict==4.0.1 --no-build-isolation
+> ```
+>
+> 之后 `-i` 看到 flatdict 已满足就会跳过构建。若还有其他包报同样的
+> `pkg_resources` 错，同样套路处理。
 
 ```bat
 cd C:\isaac-lab
