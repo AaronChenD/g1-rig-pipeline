@@ -18,6 +18,33 @@ import argparse
 import os
 import sys
 
+import re
+import xml.etree.ElementTree as ET
+
+
+def clean_urdf(src, dst):
+    """剔除传感器/噪声 link (mid360/d435/imu/force_sensor) 及其关节。
+
+    这些 link 的 mesh 路径在 URDF 里是断链, 会产生 Unresolved reference
+    (甚至可能是 GUI 导入崩溃的原因)。清洗后的 URDF 写在原 URDF 同目录,
+    保证相对 mesh 路径仍然有效。"""
+    tree = ET.parse(src)
+    root = tree.getroot()
+    pat = re.compile(r"force_sensor|imu|d435|mid360")
+    drop = {l.get("name") for l in root.findall("link") if pat.search(l.get("name") or "")}
+    for l in list(root.findall("link")):
+        if l.get("name") in drop:
+            root.remove(l)
+    n_j = 0
+    for j in list(root.findall("joint")):
+        p, c = j.find("parent"), j.find("child")
+        if (p is not None and p.get("link") in drop) or (c is not None and c.get("link") in drop):
+            root.remove(j)
+            n_j += 1
+    tree.write(dst, encoding="utf-8", xml_declaration=True)
+    return len(drop), n_j
+
+
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="URDF -> USD converter (G1 pipeline)")
@@ -49,9 +76,16 @@ if not os.path.isfile(urdf):
 
 from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
+# ---- 清洗 URDF (剔除传感器断链 link), 写在原 URDF 同目录 ----
+base = os.path.splitext(os.path.basename(urdf))[0]
+clean_path = os.path.join(os.path.dirname(urdf), base + "_isaac_clean.urdf")
+n_drop, n_joint = clean_urdf(urdf, clean_path)
+print("[convert] 清洗 URDF: 剔除 %d 个传感器 link / %d 个关节 -> %s"
+      % (n_drop, n_joint, os.path.basename(clean_path)))
+
 out_usd = os.path.abspath(args_cli.out)
 cfg = UrdfConverterCfg(
-    asset_path=os.path.abspath(urdf),
+    asset_path=os.path.abspath(clean_path),
     usd_dir=os.path.dirname(out_usd) or ".",
     usd_file_name=os.path.basename(out_usd),
     force_usd_conversion=True,          # 重跑即重新生成
@@ -74,7 +108,7 @@ from pxr import Usd, UsdPhysics
 stage = Usd.Stage.Open(converter.usd_path)
 names = []
 for prim in stage.Traverse():
-    if prim.HasAPI(UsdPhysics.RevoluteJointAPI) or prim.IsA(UsdPhysics.RevoluteJoint):
+    if prim.IsA(UsdPhysics.RevoluteJoint) or prim.IsA(UsdPhysics.PrismaticJoint):
         names.append(prim.GetName())
 print("[convert] USD 内旋转关节 %d 个" % len(names))
 print("[convert] %s" % ", ".join(sorted(names)))

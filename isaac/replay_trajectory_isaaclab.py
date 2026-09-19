@@ -97,7 +97,9 @@ def build_robot_cfg(usd_override):
     # v2.3.0: prim path 必须是普通全局路径 (以 / 开头), {regex:...} 包裹语法已废除
     cfg.prim_path = "/World/G1"
     if usd_override:
-        cfg.spawn.usd_path = usd_override
+        # 自定义 USD: 用干净的 spawn (不继承内置 G1 的执行器正则 —— 那是为 29dof
+        # 命名 elbow_pitch_joint 等写的, 对 DFQ 名字无匹配会导致关节被踢出驱动组)
+        cfg.spawn = sim_utils.UsdFileCfg(usd_path=usd_override)
     cfg.init_state = ArticulationInitStateCfg(pos=[0.0, 0.0, 0.7923])
     return cfg
 
