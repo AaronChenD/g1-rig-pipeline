@@ -157,9 +157,18 @@ Python——最后这条是灾难，会把包装进错误的 Python）。zip 安
 所以必须手动建一个 junction（一次性，无需管理员）：
 
 ```powershell
-cmd /c mklink /J "C:\isaac-lab\_isaac_sim" "C:\isaac-sim"
+cmd /c mklink /J "C:\isaac-lab\_isaac_sim" "C:\isaac-sim"   # 换成你实际的 Sim 目录名!
 Test-Path C:\isaac-lab\_isaac_sim\python.bat    # 应输出 True
 ```
+
+> **注意**：`mklink /J` 创建时**不校验目标是否存在**——路径写错（比如把
+> `issac-sim` 写成 `isaac-sim`）照样报"创建的联接"，但 Test-Path 会是 False
+> （悬空 junction）。排查真名：
+> `Get-ChildItem C:\ -Directory | Where-Object Name -like "*saac*"`；
+> zip 解压的 Sim 可能还嵌套一层（python.bat 不在根），用
+> `Get-ChildItem C:\isaac-sim -Recurse -Filter python.bat -Depth 2` 找到
+> 实际层级，junction 指向含 python.bat 的那层。改目标先
+> `cmd /c rmdir "C:\isaac-lab\_isaac_sim"`（只删链接不删文件）。
 
 > 判断是否中招：`-i` 安装日志里的 pip 报错路径出现
 > `AppData\Local\Programs\Python\Python312`（系统 Python）而不是 isaac-sim 的
