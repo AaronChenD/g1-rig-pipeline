@@ -228,7 +228,9 @@ def main():
     rjoints = list(robot.joint_names)
     idx_map, skipped, aliased = {}, [], []
     for jf in joint_fields:
-        jn = ALIAS.get(jf, jf)
+        # 先试原名; 原名不存在才走别名 (别名是给内置 29dof 版的,
+        # 在 DFQ 版上无条件改写反而会把真实存在的关节踢掉)
+        jn = jf if jf in rjoints else ALIAS.get(jf, jf)
         if jn in rjoints:
             idx_map[jf] = rjoints.index(jn)
             if jn != jf:
