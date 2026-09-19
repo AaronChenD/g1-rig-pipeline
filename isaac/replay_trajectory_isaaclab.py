@@ -117,7 +117,8 @@ def main():
              "有" if "root_pos" in data.dtype.names else "无"))
 
     # ---- 仿真上下文 ----
-    gravity = (0.0, 0.0, -9.81) if args_cli.physics else (0.0, 0.0, 0.0)
+    # 重力常开: 预览模式每帧覆写关节+根位姿+速度 (运动学精确), 且落地校准需要重力
+    gravity = (0.0, 0.0, -9.81)
     sim_dt = 1.0 / fps / max(args_cli.speed, 1e-3)
     sim = SimulationContext(sim_utils.SimulationCfg(
         dt=sim_dt, gravity=gravity, device=args_cli.device,
@@ -220,14 +221,31 @@ def main():
 
     # ---- 根轨迹语义: 数据是"绑定相对" (绑定时 = (0,0,0)+identity), ----
     # ---- 须叠加机器人初始世界摆放 T0: world = T0 ∘ L ----------------------
+    # ---- 落地校准: 不猜站立高度, 让机器人自己落到脚底贴地 ----
+    # 关节按数据第 0 帧定住, 基座在重力下落 (每步清零速度防弹跳) 至脚接触地面,
+    # 取稳定后的根位姿为世界摆放 T0 —— 内置 37 关节版 / --usd DFQ 版都自动正确。
+    print("[replay] 落地校准 (约 1.5 秒, 让脚底贴地)...")
+    q_first, _, _ = sample(0.0)
+    brace = torch.zeros((1, n_j), dtype=torch.float, device=dev)
+    for jf, i in idx_map.items():
+        brace[0, i] = float(q_first[jf])
+    zero_v = torch.zeros_like(brace)
+    zero_root_v = torch.zeros((1, 6), dtype=torch.float, device=dev)
+    _wrv = getattr(robot, "write_root_link_velocity_to_sim", None) \
+        or getattr(robot, "write_root_velocity_to_sim", None)
+    for _ in range(max(int(round(1.5 / sim_dt)), 20)):
+        robot.write_joint_state_to_sim(brace, zero_v)
+        if _wrv is not None:
+            _wrv(zero_root_v)
+        sim.step()
     try:
         _t0 = robot.data.root_link_pose_w[0].detach().cpu().numpy()
-        place_p = [float(_t0[0]), float(_t0[1]), float(_t0[2])]
-        place_q = [float(_t0[3]), float(_t0[4]), float(_t0[5]), float(_t0[6])]
+        place_p = [float(v) for v in _t0[:3]]
+        place_q = [float(v) for v in _t0[3:7]]
     except Exception as e:
-        print("[replay][note] 读初始根位姿失败 (%s), 用默认 0.7923" % e)
+        print("[replay][note] 读稳定根位姿失败 (%s), 用默认 0.7923" % e)
         place_p, place_q = [0.0, 0.0, 0.7923], [1.0, 0.0, 0.0, 0.0]
-    print("[replay] 根轨迹: 绑定相对 -> 世界 (叠加初始摆放 z=%.3f)" % place_p[2])
+    print("[replay] 根轨迹: 绑定相对 -> 世界 (落地后摆放 z=%.3f)" % place_p[2])
 
     def _quat_mul(a, b):   # wxyz
         aw, ax, ay, az = a; bw, bx, by, bz = b
@@ -283,6 +301,8 @@ def main():
             robot.write_joint_state_to_sim(pos, torch.zeros_like(pos))
             if rp is not None:
                 write_root(rp, rq)
+            if _wrv is not None:          # 清零根速度, 重力常开下防下坠累积
+                _wrv(zero_root_v)
         sim.step()
         sim.render()
         t += sim_dt * args_cli.speed
