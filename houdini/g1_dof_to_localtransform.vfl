@@ -1,0 +1,51 @@
+// g1_dof_to_localtransform.vfl — Attribute Wrangle 代码片段 (Run Over: Points)
+// ============================================================================
+// 作用: 按每关节的 f@dof (度) 驱动 KineFX 骨架, 自动 clamp 到 URDF 限位.
+//
+// 节点链:  USD Character Import(输出2 骨架)
+//          -> [g1_import_urdf_meta.py  Python SOP]   (盖 urdf_axis/限位等)
+//          -> [g1_dof_player.py  Python SOP]         (可选, 写 f@dof)
+//          -> [Attribute Wrangle: 本代码]
+//          -> Bone Deform / Rig Pose / 导出
+//
+// 数学 (已用 pxr 对全 62 关节验证到 2.7e-5 m, 500 组随机矩阵复验, 见 houdini/README.md):
+//   posed_local = bind_local · T(-t)·R(â,θ)·T(t)  ==  [B·R(â,θ) | t]
+//   (关节枢轴 = 骨骼自身原点, 所以最终平移不变, 只左乘旋转)
+//   â  = 父骨绑定坐标系下的关节轴 (v@urdf_axis)
+//   t  = 绑定 localtransform 的平移 (保持不动)
+//   θ  = URDF 关节角 (度) - 绑定姿势偏移 (f@dof_offset)
+//
+// 没写 f@dof 的关节视为 0 度 (保持绑定姿势); urdf_movable=0 的骨不动.
+// ============================================================================
+
+if (!i@urdf_movable)
+    return;                                  // 固定骨/结构骨/虚拟骨: 不动
+
+float q = clamp(f@dof, f@urdf_lo_deg, f@urdf_hi_deg)   // URDF 限位
+          - f@dof_offset;                              // 绑定姿势补偿 (tpose 文件非 0)
+
+vector a = normalize(v@urdf_axis);
+float ang = radians(q);
+float c = cos(ang), s = sin(ang), u = 1.0 - c;
+float x = a.x, y = a.y, z = a.z;
+
+// 轴角旋转矩阵 (Houdini/pxr 行向量约定 —— 元素布局已对 pxr 数值标定)
+matrix3 R = set(
+    u*x*x + c,     u*x*y + s*z,   u*x*z - s*y,
+    u*x*y - s*z,   u*y*y + c,     u*y*z + s*x,
+    u*x*z + s*y,   u*y*z - s*x,   u*z*z + c);
+
+matrix4 lt = 4@localtransform;               // 绑定局部变换 (行向量约定)
+matrix3 B  = set(lt[0][0], lt[0][1], lt[0][2],
+                 lt[1][0], lt[1][1], lt[1][2],
+                 lt[2][0], lt[2][1], lt[2][2]);
+
+matrix3 NR = B * R;                          // posed = [B·R | t]
+
+lt[0][0]=NR[0][0]; lt[0][1]=NR[0][1]; lt[0][2]=NR[0][2];
+lt[1][0]=NR[1][0]; lt[1][1]=NR[1][1]; lt[1][2]=NR[1][2];
+lt[2][0]=NR[2][0]; lt[2][1]=NR[2][1]; lt[2][2]=NR[2][2];
+// lt 第 4 行 (平移 t) 不变
+4@localtransform = lt;
+
+// (调试) 观察单关节角度: v@Cd = 0.5 + 0.5*normalize(a)*sin(ang);

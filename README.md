@@ -45,6 +45,7 @@
 - [备选路线](#备选路线)
 - [坐标与单位速查](#坐标与单位速查)
 - [关节元数据（重定向用）](#关节元数据重定向用)
+- [DCC 资产目录](#dcc-资产目录)
 - [常见问题 FAQ](#常见问题-faq)
 
 ---
@@ -364,6 +365,19 @@ python -m mujoco.viewer
 
 做动捕重定向（比如 HumanIK / 自研 retarget）时，用它把"人形骨骼的摆动"翻译成"机器人关节的正确旋转轴+限位"。
 
+2025-09 起新增 `axis_world_at_bind`（绑定姿势下关节轴的世界方向，Z-up）——Houdini DOF 驱动/提取脚本靠它换算轴向，无需手推坐标系。
+
+---
+
+## DCC 资产目录
+
+各 DCC 的配套脚本/文档按软件分家存放，各自有独立 README：
+
+| 目录 | 内容 | 何时用 |
+|---|---|---|
+| [`houdini/`](houdini/) | DOF→骨架驱动（Python SOP × 3 + Rig Wrangle 片段）、URDF 限位 clamp、动捕姿势反向提取关节角（CSV 回收）、CHOP 清洗指引、60 秒自检金标准 | 在 Houdini 里做机器人动画数据清洗 / 从动捕回收 URDF 关节角 |
+| [`motionbuilder/`](motionbuilder/) | HIK 槽位映射文案（Q16 的完整版）+ `characterize_g1.py` 一键角色化脚本 | 在 MotionBuilder 里把 G1 变成 HIK Character 并重定向动捕 |
+
 ---
 
 ## 常见问题 FAQ
@@ -432,6 +446,7 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 1. **Solaris（LOPs）**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `_houdini.usda` → 视口所见即所得（米制 1:1，Hydra 直接渲染 UsdSkel）。
 2. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，三个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的；Convert Units 参数开不开都行（文件已是米制）。
 3. 相关节点：`USD Animation Import`（只导骨骼+动画）、`USD Skin Import`（只导蒙皮权重）。
+4. **进阶**：DOF 数据驱动机器人姿势 / 动捕动画按 URDF 限位清洗 / 反向提取关节角 → 见 [`houdini/`](houdini/) 资产目录（Python SOP + Rig Wrangle，附 60 秒自检数值）。
 
 > **怎么确认手里的 `_houdini.usda` 是最新版？** 用文本编辑器（记事本/VS Code）打开文件，**Ctrl+F 搜 `g1-rig-pipeline houdini variant v3`**（在文件头前几行）。搜不到 = 旧脚本生成的旧文件，重新跑最新脚本即可。Houdini 端记得删掉旧的 `USD Character Import` 节点重新导入（节点会缓存 USD 层）。
 >
@@ -439,6 +454,9 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 
 **Q16：MotionBuilder 里无法创建 HIK 角色（"骨骼不够"）？能自己加虚拟骨骼吗？**
 可以，加虚拟骨（helper bones）正是 HIK 适配非人形骨骼的标准做法。而且有个好消息：**G1 的 HIK 15 个必需节点其实都有真实骨骼**（HIK 官方必需项：Hips / Spine / Head / 双臂各 3 / 双腿各 3，Neck 和手指都是可选）——先按下面的映射表把 Definition 填满，大多情况根本不用加骨：
+
+> 本条完整版（含一键角色化脚本 `characterize_g1.py`、手指/动捕源匹配策略、Plot 流程）
+> 已独立成 [`motionbuilder/`](motionbuilder/) 资产目录。
 
 另外：本管线的**绑定姿势是 URDF 官方零位（手臂自然下垂）、双脚贴地**——与官方机器人状态一致；如果你的动捕流程偏好 T-Pose 起手，重新跑脚本时加 `--pose tpose` 即可。
 

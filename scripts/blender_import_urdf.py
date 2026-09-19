@@ -237,7 +237,9 @@ def select_links(urdf, skip_re):
     # drop the URDF 'world' pseudo-root if it snuck in
     if "world" in keep and not has_visual(urdf.links.get("world", ET.Element("link"))):
         keep.discard("world")
-    return keep
+    # set 的迭代顺序受 PYTHONHASHSEED 影响 -> 骨骼创建序/USD 关节序在两次运行间会不同;
+    # 排序后保证可复现 (骨架拓扑与数据不变, 只是顺序确定)
+    return sorted(keep)
 
 
 def kept_subtree_size(urdf, name, keep):
@@ -1293,6 +1295,16 @@ def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None,
         ax = j.find("axis")
         if ax is not None:
             entry["axis_in_child_frame"] = [round(v, 6) for v in _floats(ax.get("xyz"), (0, 0, 1))]
+            # 绑定姿势下关节轴的世界方向 (Z-up, URDF 原生). Houdini _houdini.usda 为 Y-up,
+            # 消费端置换 (x,y,z)->(y,z,x) 即可. 用于 DOF 驱动/提取 (houdini/ 资产).
+            try:
+                aw = urdf.world.get(name)
+                if aw is not None:
+                    awv = (aw.to_3x3()
+                           @ Vector(_floats(ax.get("xyz"), (0, 0, 1)))).normalized()
+                    entry["axis_world_at_bind"] = [round(v, 6) for v in awv]
+            except Exception:
+                pass
         lim = j.find("limit")
         if lim is not None:
             entry["limits"] = {
