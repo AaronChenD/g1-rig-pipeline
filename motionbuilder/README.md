@@ -7,6 +7,8 @@
 | `characterize_g1.py` | 一键 HIK 角色化脚本（Python Editor 粘贴运行，自动填槽） |
 | `README.md` | 本文档：HIK 槽位映射表 + 完整重定向流程 + 手指/关节数对不上的处理 |
 
+> 重定向 + Plot 之后，用 [`../isaac/export_animation_motionbuilder.py`](../isaac/) 把动画导出成 Isaac 可用的 CSV/NPY。
+
 ---
 
 ## 一、准备：把 G1 弄进 MotionBuilder

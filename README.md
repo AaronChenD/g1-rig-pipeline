@@ -365,7 +365,7 @@ python -m mujoco.viewer
 
 做动捕重定向（比如 HumanIK / 自研 retarget）时，用它把"人形骨骼的摆动"翻译成"机器人关节的正确旋转轴+限位"。
 
-2025-09 起新增 `axis_world_at_bind`（绑定姿势下关节轴的世界方向，Z-up）——Houdini DOF 驱动/提取脚本靠它换算轴向，无需手推坐标系。
+2025-09 起新增 `axis_world_at_bind`（绑定姿势下关节轴的世界方向，Z-up）、`bind_local16` / `axis_parent_local` / `root_bind16`（绑定局部矩阵与父骨轴向，行向量约定，FBX/USD 往返不变）——`isaac/` 的三软件动画导出脚本靠它们把骨骼动画精确换算成 URDF 关节角。
 
 ---
 
@@ -375,7 +375,7 @@ python -m mujoco.viewer
 
 | 目录 | 内容 | 何时用 |
 |---|---|---|
-| [`houdini/`](houdini/) | DOF→骨架驱动（Python SOP × 3 + Rig Wrangle 片段）、URDF 限位 clamp、动捕姿势反向提取关节角（CSV 回收）、CHOP 清洗指引、60 秒自检金标准 | 在 Houdini 里做机器人动画数据清洗 / 从动捕回收 URDF 关节角 |
+| [`isaac/`](isaac/) | 骨骼动画导出三件套（Blender / Maya / MotionBuilder → CSV + NPY）：URDF 关节角 + 根轨迹，Isaac / pink-IK 直接可用，附 60 秒自检金标准 | 把动捕重定向结果或手 K 动画变成机器人轨迹数据 |
 | [`motionbuilder/`](motionbuilder/) | HIK 槽位映射文案（Q16 的完整版）+ `characterize_g1.py` 一键角色化脚本 | 在 MotionBuilder 里把 G1 变成 HIK Character 并重定向动捕 |
 
 ---
@@ -446,7 +446,7 @@ USD **不需要手动导出**：`blender_import_urdf.py` 每次运行成功都�
 1. **Solaris（LOPs）**：`/stage` 里放 **File LOP**（或 Sublayer/Reference）→ 选 `_houdini.usda` → 视口所见即所得（米制 1:1，Hydra 直接渲染 UsdSkel）。
 2. **SOP/KineFX（`USD Character Import`）**：它是把 UsdSkel 转成 KineFX 骨架+蒙皮的**转换节点**，三个输出（骨架/网格/权重）**要连在一起用**，单独拆开看本来就是"碎"的；Convert Units 参数开不开都行（文件已是米制）。
 3. 相关节点：`USD Animation Import`（只导骨骼+动画）、`USD Skin Import`（只导蒙皮权重）。
-4. **进阶**：DOF 数据驱动机器人姿势 / 动捕动画按 URDF 限位清洗 / 反向提取关节角 → 见 [`houdini/`](houdini/) 资产目录（Python SOP + Rig Wrangle，附 60 秒自检数值）。
+4. **动捕数据回收**：把动画变成 URDF 关节角轨迹（CSV/NPY，Isaac/pink-IK 可用）→ 见 [`isaac/`](isaac/) 资产目录（Blender / Maya / MotionBuilder 三版本，附 60 秒自检数值）。
 
 > **怎么确认手里的 `_houdini.usda` 是最新版？** 用文本编辑器（记事本/VS Code）打开文件，**Ctrl+F 搜 `g1-rig-pipeline houdini variant v3`**（在文件头前几行）。搜不到 = 旧脚本生成的旧文件，重新跑最新脚本即可。Houdini 端记得删掉旧的 `USD Character Import` 节点重新导入（节点会缓存 USD 层）。
 >

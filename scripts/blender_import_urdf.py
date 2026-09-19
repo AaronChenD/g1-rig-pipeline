@@ -1229,8 +1229,21 @@ def gui_popup(title, lines):
 # ----------------------------------------------------------------------------
 # Metadata json (joint axes / limits, for retargeting & robotics)
 # ----------------------------------------------------------------------------
+def _root_bind16(arm_data, root_name):
+    """根骨的绑定矩阵 (armature 空间, 行主序行向量)。isaac/ 导出脚本用它把
+    骨骼系根位姿换算回 URDF link 系 (绑定时 link 系 = 单位阵)。"""
+    try:
+        b = arm_data.bones.get(root_name)
+        if b is None:
+            return None
+        M = b.matrix_local.transposed()
+        return [round(float(v), 9) for row in M for v in row]
+    except Exception:
+        return None
+
+
 def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None,
-               pose_name="zero", pose_offsets=None, ground=None):
+               pose_name="zero", pose_offsets=None, ground=None, arm_data=None):
     if usd_files:
         units_str = "URDF native: meters, Z-up.  USD files: " + "; ".join(
             "%s=%s,%s-up" % (v["name"], v["units"], v["up"]) for v in usd_files)
@@ -1243,6 +1256,7 @@ def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None,
         "generator": "g1-rig-pipeline / blender_import_urdf.py",
         "units": units_str,
         "root_link": urdf.root_link,
+        "root_bind16": (_root_bind16(arm_data, urdf.root_link) if arm_data is not None else None),
         "num_links_total": len(urdf.links),
         "num_joints_total": len(urdf.joints),
         "num_joints_movable": sum(1 for j in urdf.joints
@@ -1295,8 +1309,9 @@ def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None,
         ax = j.find("axis")
         if ax is not None:
             entry["axis_in_child_frame"] = [round(v, 6) for v in _floats(ax.get("xyz"), (0, 0, 1))]
-            # 绑定姿势下关节轴的世界方向 (Z-up, URDF 原生). Houdini _houdini.usda 为 Y-up,
-            # 消费端置换 (x,y,z)->(y,z,x) 即可. 用于 DOF 驱动/提取 (houdini/ 资产).
+            # 绑定姿势下关节轴的世界方向 (Z-up, URDF 原生). 消费端置换 (x,y,z)->(y,z,x)
+            # 即得 Y-up. 用于 DOF 驱动/提取 (isaac/ 导出脚本).
+            awv = None
             try:
                 aw = urdf.world.get(name)
                 if aw is not None:
@@ -1305,6 +1320,23 @@ def write_meta(urdf, keep, path, usd_units, hik_helpers=None, usd_files=None,
                     entry["axis_world_at_bind"] = [round(v, 6) for v in awv]
             except Exception:
                 pass
+            # Isaac 导出脚本 (isaac/) 用的两份数据. FBX/USD 往返都保留局部矩阵,
+            # 以下数值在 Blender/Maya/MotionBuilder 三个软件里通用:
+            #   bind_local16      绑定局部矩阵, 行主序 16 元组, 行向量约定, 相对父骨
+            #   axis_parent_local 关节轴在父骨绑定坐标系下的单位向量
+            try:
+                if arm_data is not None and awv is not None:
+                    b = arm_data.bones.get(name)
+                    par_b = arm_data.bones.get(entry["parent_bone"])
+                    if b is not None and par_b is not None:
+                        L = (par_b.matrix_local.inverted() @ b.matrix_local).transposed()
+                        entry["bind_local16"] = [round(float(v), 9)
+                                                 for row in L for v in row]
+                        a3 = (par_b.matrix_local.to_3x3().inverted() @ awv)
+                        entry["axis_parent_local"] = [round(float(v), 9) for v in a3]
+            except Exception:
+                pass
+        entry["bind_offset_deg"] = float((pose_offsets or {}).get(name, 0.0))
         lim = j.find("limit")
         if lim is not None:
             entry["limits"] = {
@@ -1485,7 +1517,7 @@ def main():
     if meta_path:
         write_meta(urdf, keep, meta_path, cfg["usd_units"], hik_helpers, usd_files=usd_plan,
                    pose_name=cfg.get("pose", "zero"), pose_offsets=pose_offsets,
-                   ground=ground_info)
+                   ground=ground_info, arm_data=arm_data)
         print("Meta   :", meta_path)
     if blend_path:
         if cfg["blend"] or bpy.app.background:
