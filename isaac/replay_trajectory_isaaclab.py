@@ -222,12 +222,12 @@ def main():
     # ---- 须叠加机器人初始世界摆放 T0: world = T0 ∘ L ----------------------
     try:
         _t0 = robot.data.root_link_pose_w[0].detach().cpu().numpy()
-        p0 = [float(_t0[0]), float(_t0[1]), float(_t0[2])]
-        q0 = [float(_t0[3]), float(_t0[4]), float(_t0[5]), float(_t0[6])]
+        place_p = [float(_t0[0]), float(_t0[1]), float(_t0[2])]
+        place_q = [float(_t0[3]), float(_t0[4]), float(_t0[5]), float(_t0[6])]
     except Exception as e:
         print("[replay][note] 读初始根位姿失败 (%s), 用默认 0.7923" % e)
-        p0, q0 = [0.0, 0.0, 0.7923], [1.0, 0.0, 0.0, 0.0]
-    print("[replay] 根轨迹: 绑定相对 -> 世界 (叠加初始摆放 z=%.3f)" % p0[2])
+        place_p, place_q = [0.0, 0.0, 0.7923], [1.0, 0.0, 0.0, 0.0]
+    print("[replay] 根轨迹: 绑定相对 -> 世界 (叠加初始摆放 z=%.3f)" % place_p[2])
 
     def _quat_mul(a, b):   # wxyz
         aw, ax, ay, az = a; bw, bx, by, bz = b
@@ -244,11 +244,12 @@ def main():
                 v[2] + w*tz + (x*ty - y*tx))
 
     # ---- 写入 API (兼容 2.x 的两种命名) ----
+    # 注意: place_p/place_q 不能叫 p0/q0 —— 初始帧代码用 q0 表示关节角字典!
     def write_root(p, quat_wxyz):
         # p/quat 是绑定相对量; 先合成到世界系, API 要 (N,7) 张量 [xyz, qwxyz]
-        pw = _quat_rot(q0, p)
-        pw = [pw[i] + p0[i] for i in range(3)]
-        qw = _quat_mul(q0, quat_wxyz)
+        pw = _quat_rot(place_q, p)
+        pw = [pw[i] + place_p[i] for i in range(3)]
+        qw = _quat_mul(place_q, quat_wxyz)
         pose = torch.tensor([pw + list(qw)], dtype=torch.float, device=dev)
         fn = getattr(robot, "write_root_link_pose_to_sim", None) \
             or getattr(robot, "write_root_pose_to_sim")
