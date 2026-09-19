@@ -29,8 +29,11 @@ import os
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Replay g1-rig-pipeline animation in Isaac Lab")
-parser.add_argument("--npy", type=str, required=True, help="export_animation_*.py 输出的 .npy")
-parser.add_argument("--usd", type=str, default="", help="自定义机器人 USD 路径 (默认用内置 G1)")
+parser.add_argument("--npy", type=str, default="", help="export_animation_*.py 输出的 .npy 或 .csv")
+parser.add_argument("--latest", nargs="?", const=r"D:\BlenderPro\G1", metavar="DIR",
+                    help="一键模式: 自动用 DIR 里最新的 .npy/.csv (默认 D:\BlenderPro\G1)")
+parser.add_argument("--usd", type=str, default="",
+                    help="自定义机器人 USD 路径 (默认: D:\BlenderPro\G1\g1_dfq.usd 存在则自动用, 否则内置 G1)")
 parser.add_argument("--physics", action="store_true", help="物理模式 (重力+PD 目标)")
 parser.add_argument("--loop", action="store_true", help="循环播放")
 parser.add_argument("--speed", type=float, default=1.0, help="回放倍速")
@@ -57,11 +60,29 @@ except ImportError:
 from isaaclab.sim import SimulationContext
 
 
-def load_motion(npy_path):
+def load_motion(motion_path):
     import numpy as _np
-    data = _np.load(npy_path)
+    if motion_path.lower().endswith(".csv"):
+        # CSV (export_animation_*.py 同款格式): frame,time_s,root_x..root_qz,<关节名...>
+        raw = _np.atleast_1d(_np.genfromtxt(motion_path, delimiter=",", names=True,
+                                            dtype=None, encoding="utf-8"))
+        reserved = ("frame", "time_s", "root_x", "root_y", "root_z",
+                    "root_qw", "root_qx", "root_qy", "root_qz")
+        jnames = [n for n in raw.dtype.names if n not in reserved]
+        dt = _np.dtype([("time", "<f8"), ("root_pos", "<f8", (3,)),
+                        ("root_quat_wxyz", "<f8", (4,))] + [(jn, "<f8") for jn in jnames])
+        data = _np.zeros(len(raw), dtype=dt)
+        data["time"] = raw["time_s"]
+        for i, ax in enumerate("xyz"):
+            data["root_pos"][:, i] = raw["root_" + ax]
+        for i, qc in enumerate(("qw", "qx", "qy", "qz")):
+            data["root_quat_wxyz"][:, i] = raw["root_" + qc]
+        for jn in jnames:
+            data[jn] = raw[jn]
+    else:
+        data = _np.load(motion_path)
     fps = 0.0
-    cols_path = os.path.splitext(npy_path)[0] + "_columns.json"
+    cols_path = os.path.splitext(motion_path)[0] + "_columns.json"
     if os.path.isfile(cols_path):
         with open(cols_path, "r", encoding="utf-8") as f:
             fps = float(json.load(f).get("fps", 0.0))
@@ -112,6 +133,27 @@ def build_robot_cfg(usd_override):
 
 
 def main():
+    # ---- 一键模式: 取目录里最新的 .npy/.csv ----
+    if args_cli.latest:
+        import glob
+        cands = [f for f in glob.glob(os.path.join(args_cli.latest, "*.npy"))
+                 + glob.glob(os.path.join(args_cli.latest, "*.csv"))]
+        if not cands:
+            print("[replay][ERROR] %s 里没有 .npy/.csv — 先在 Blender 里跑导出脚本" % args_cli.latest)
+            raise SystemExit(1)
+        args_cli.npy = max(cands, key=os.path.getmtime)
+        import time as _time
+        print("[replay] 一键模式: 最新数据 %s (修改于 %s)"
+              % (os.path.basename(args_cli.npy),
+                 _time.strftime("%H:%M:%S", _time.localtime(os.path.getmtime(args_cli.npy)))))
+    if not args_cli.npy:
+        print("[replay][ERROR] 需要 --npy <文件> 或 --latest [目录]")
+        raise SystemExit(1)
+    # ---- 自动 DFQ: 没显式指定 --usd 时, g1_dfq.usd 存在就用 (53 关节全匹配) ----
+    if not args_cli.usd and os.path.isfile(r"D:\BlenderPro\G1\g1_dfq.usd"):
+        args_cli.usd = r"D:\BlenderPro\G1\g1_dfq.usd"
+        print("[replay] 检测到 g1_dfq.usd -> 自动启用 53 关节 DFQ 版")
+
     data, fps = load_motion(args_cli.npy)
     if fps <= 0:
         fps = 30.0

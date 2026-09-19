@@ -294,6 +294,26 @@ cd C:\isaac-lab
 为 `G1_CFG`；物理模式走 `set_joint_position_target`+`write_data_to_sim` 的 PD 目标），
 同时保留旧版 Isaac Lab 的兼容分支。
 
+### 3.4 一键回放（日常推荐）与 CSV
+
+`replay_latest_g1.bat`：**双击即回放**——自动选 `D:\BlenderPro\G1\` 里**最新**
+的 `.npy` 或 `.csv`（按修改时间），检测到 `g1_dfq.usd` 就自动启用（53 关节全匹配），
+默认循环。日常工作流就两步：**Blender 里跑导出脚本 → 双击这个 bat**。
+
+```bat
+D:\BlenderPro\G1\g1-rig-pipeline\isaac\replay_latest_g1.bat
+D:\BlenderPro\G1\g1-rig-pipeline\isaac\replay_latest_g1.bat --speed 0.5
+```
+
+CSV 直接回放（`--npy` 参数同样接受 `.csv`）：
+
+```bat
+D:\BlenderPro\G1\g1-rig-pipeline\isaac\replay_g1.bat D:\BlenderPro\G1\g1_anim.csv --loop
+```
+
+CSV 需与导出器格式一致：首行表头 `frame,time_s,root_x..root_qz,<53 关节名>`；
+同目录同名 `_columns.json` 提供 fps（缺失时从 time_s 差值自动推定）。
+
 ### 3.5 bipeds.py / 回放崩溃: "GetPrimAtPath(Stage, NoneType)"
 
 Isaac Sim 5.x 的内置资产 (地面 / 机器人 USD) 默认**按需从 NVIDIA 云端下载**
@@ -316,6 +336,25 @@ Isaac Sim 5.x 的内置资产 (地面 / 机器人 USD) 默认**按需从 NVIDIA 
   `--usd` 指定它——**回放脚本已内置本地地面兜底** (云端失败自动换 Cuboid 地面),
   这条路完全离线可用。
 
+### 3.6 URDF → USD：53 关节 DFQ 版（一次性，推荐）
+
+内置 G1 永远缺 waist_pitch/roll、手腕、手指（37 关节，腰仅偏航）。转换一次
+DFQ URDF 后 `--usd` 回放即 53/53 全匹配。**不要用 GUI File>Import**（对复杂
+URDF 会吞错 `'NoneType' object has no attribute 'name'`），用仓库的命令行转换：
+
+```bat
+D:\BlenderPro\G1\g1-rig-pipeline\isaac\convert_urdf_g1.bat
+```
+
+它会：① 先把 URDF 清洗一遍（剔除 mid360/d435/imu/force_sensor 断链传感器
+link，生成 `*_isaac_clean.urdf` 放在原 URDF 旁）；② UrdfConverter 无头转换
+（浮动基座、保留完整 link 树、位置驱动 PD 100/5，可 `--stiffness/--damping`
+调）；③ 打开产物数关节并打印名单——应见 **"旋转关节 53 个"**。产物
+`D:\BlenderPro\G1\g1_dfq.usd`（连同 `configuration/` 目录）。
+
+之后 `--usd D:\BlenderPro\G1\g1_dfq.usd` 回放；`replay_latest_g1.bat`
+检测到它还会自动启用。
+
 ### 3.7 回放排障速查
 
 - **机器人陷进地面 / 悬在半空**：根轨迹是"绑定相对"语义（绑定时=(0,0,0)），
@@ -326,7 +365,7 @@ Isaac Sim 5.x 的内置资产 (地面 / 机器人 USD) 默认**按需从 NVIDIA 
 - **某些动作放不出来（如弯腰）**：内置 G1 只有 37 关节，**没有 waist_pitch /
   waist_roll / 手腕 / 手指**（腰只有 torso_joint=偏航）。K 在躯干上的弯腰会全落进
   `waist_pitch_joint`——内置机器人无此关节，直接被跳过。解法：URDF Importer 转
-  DFQ 版 USD 后 `--usd` 回放（53 关节全匹配，见 3.6）；
+  DFQ 版 USD 后 `--usd` 回放（53 关节全匹配，见 3.4/3.6）；
 - 查自己 npy 里哪些关节真的动了（Isaac 的 python 带 numpy）：
 
 ```powershell
@@ -383,3 +422,74 @@ Isaac Sim 5.x 的内置资产 (地面 / 机器人 USD) 默认**按需从 NVIDIA 
 2. **Maya / MotionBuilder 模拟**：以 1 的真实数据构造仿真场景（含命名空间、
    FBX 根节点、世界矩阵链）驱动两个脚本的 App 层，结果与 Blender 逐位一致。
 3. 骨架父级一致性：53 可动骨的实际父级 vs URDF 父级，全量核对 0 差异。
+
+---
+
+## 七、全程复盘（2025-09 上手实录 · 本分支 PR 内容）
+
+### 7.1 这条分支交付了什么
+
+| 目录/文件 | 内容 |
+|---|---|
+| `scripts/blender_import_urdf.py` | URDF → Blender 绑定（零位/T-Pose）→ 三套 USD（Maya/Houdini/UE）+ **meta v2**（bind_local16 / axis_parent_local / root_bind16 等重定向真值）；GUI 安全报错 |
+| `isaac/export_animation_{blender,maya,motionbuilder}.py` | 三软件骨骼动画 → CSV/NPY（53 URDF 关节 + 根轨迹，共用同一套 CORE 数学） |
+| `isaac/make_demo_trajectory.py` | meta → 6s 演示轨迹（蹲起+挥手+转腰，蹲深按腿几何实算） |
+| `isaac/replay_trajectory_isaaclab.py` | Isaac Lab 2.3 回放：绑定相对根轨迹自动合成世界位姿、落地校准、关节别名映射、`--usd` DFQ 版执行器适配、动静自检、CSV 输入、`--latest` 一键模式 |
+| `isaac/convert_urdf_usd.py` + `convert_urdf_g1.bat` | 无 GUI 的 URDF→USD 转换（先剔除传感器断链 link 再转，自动验证 53 关节） |
+| `isaac/replay_g1.bat` / `replay_latest_g1.bat` / `make_demo_g1.bat` | 快捷入口（CRLF+ASCII，`ISAACLAB_BAT` 环境变量可覆盖安装位置） |
+| `isaac/check_assets.py` | 云端资产可达性诊断 |
+| `motionbuilder/` | characterize_g1.py + HIK 映射表 |
+| `docs/example/*_meta.json` | 示例 meta（旧版格式，仅演示轨迹用；导出器会自动找新版） |
+
+**目录模型**：脚本只活在 git clone（`git pull` 更新）；`D:\BlenderPro\G1\` 只放
+数据（URDF/.blend/meta/npy/csv/usd）。两套目录布局（G1 平铺 / unitree_ros 深层）
+已由所有脚本自动互备。
+
+### 7.2 验证状态（全部实测）
+
+- Blender E2E：URDF 世界轴摆 4 不相交子树关节 → 53 关节 <1e-4 rad 全中、根=单位阵；
+- Maya/MotionBuilder 模拟测试：与 Blender 逐位一致；
+- 53 可动骨骨架父级 vs URDF 父级：0 差异；
+- Isaac Lab 2.3.0 实机：空场景 → bipeds（Cassie/H1/G1 三机）→ demo 回放 →
+  DFQ 转换（53 关节名单核对）→ **用户手 K 动画（torso 弯腰 0.52rad）53/53 全匹配回放**。
+
+### 7.3 踩坑全录（按时间顺序，供以后查阅）
+
+**安装期**：PS 必须加 `.\` 前缀；聊天富文本会把文件名变链接（根治：文件名走
+GitHub API / git clone，运行命令用 Tab 补全）；官方 v2.3.0 的 isaaclab.bat 是
+LF 行尾、cmd 解析碎裂（ZIP 包通病，需转 CRLF）；bat 不读 ISAACSIM_PATH、兜底会
+抓系统 Python3.12（用 junction `C:\isaac-lab\_isaac_sim → C:\isaac-sim`）；
+flatdict 需 setuptools<81；PS 给 bat 传 `<` 会被当重定向（一律 `==` 具体版本号）；
+`-i` 的"卷标语法/空 PyTorch 版本"警告为官方 bat 源码 bug、良性。
+
+**资产期**：Isaac Sim 5.x 内置资产按需从 NVIDIA 云端下载（`/persistent/isaac/
+asset_root/cloud`），瞬断会让 spawn_ground_plane 拿空引用崩 `GetPrimAtPath(Stage,
+NoneType)`——不是安装坏了；`check_assets.py` 30 秒定位。
+
+**脚本期（Isaac Lab 2.3 API 差异，已全部按 v2.3.0 源码逐一校对）**：
+`ArticulationInitStateCfg` 变嵌套类；根位姿写入要 (N,7) 张量；prim path 废除
+`{regex:...}` 包裹；内置 G1 配置名 `G1_CFG`；物理模式走 `set_joint_position_target`
++`write_data_to_sim`；30fps 步长建议开 `PhysxCfg(enable_stabilization=True)`。
+
+**回放语义**：导出的根轨迹是**绑定相对**（绑定时=(0,0,0)），回放端须与机器人初始
+摆放做合成（世界 = T₀∘L）——直接写世界坐标会把 pelvis 按到 z=0 陷地 0.79m；
+摆放高度不猜，让机器人自己落地校准（内置 29dof 与 DFQ 脚高不同都自动正确）；
+变量命名要避开 `q0`（初始帧的关节字典）这类既有名字。
+
+**命名差异**：内置 g1.usd 是 29dof 命名（elbow_pitch/torso/无手腕无腰俯仰侧倾），
+URDF 是 DFQ 命名——别名映射覆盖 elbow/waist_yaw，其余（waist_pitch、手腕、
+手指）只有 `--usd` DFQ 版能放；DFQ 版回放必须**连执行器一起换**（内置正则
+`torso_joint` 等对 DFQ 名零匹配 → `Not all regular expressions are matched`）。
+
+**URDF 转换**：GUI File>Import 对复杂 URDF 会吞错（`'NoneType' object has no
+attribute 'name'`）；命令行 UrdfConverter 无 exclude 选项，mid360/d435 传感器
+link 的断链 mesh 要先清洗（`*_isaac_clean.urdf`）再转；验证 API 用
+`prim.IsA(UsdPhysics.RevoluteJoint)`（无 `RevoluteJointAPI`）。
+
+**GUI 安全**：Blender 脚本编辑器里未捕获的 `SystemExit` 会直接关闭整个 Blender
+（表现为闪退）——GUI 路径一律弹窗+RuntimeError，命令行才 SystemExit；Maya/MB
+同理。Blender GUI 的 print 要开"窗口→切换系统控制台"看。
+
+**工作流**：Blender 场景 24fps 完全没问题（时间轴按秒对齐，回放端读
+`_columns.json`）；但 K 完不要改场景 fps（改了可在导出 CONFIG['fps'] 里补写
+K 帧时的 fps 修正）。
