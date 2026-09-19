@@ -240,6 +240,28 @@ cd C:\isaac-lab
 
 数据坐标系无需转换：我们的根轨迹是 URDF Z-up/米，Isaac Sim 世界同样是 Z-up/米。
 
+### 3.5 bipeds.py / 回放崩溃: "GetPrimAtPath(Stage, NoneType)"
+
+Isaac Sim 5.x 的内置资产 (地面 / 机器人 USD) 默认**按需从 NVIDIA 云端下载**
+(Carb 设置 `/persistent/isaac/asset_root/cloud`)。该地址为空或网络不可达时,
+地面 USD 拿到空引用 → 找不到 "Plane" 子 prim → `bind_physics_material(None)`
+崩溃。**不是安装坏了**, 是资产没到本地。
+
+排查 (本目录 `check_assets.py`):
+
+```powershell
+.\isaaclab.bat -p D:\BlenderPro\G1\check_assets.py
+```
+
+- 输出 `状态 2 = 云端可达` → 直接重试 bipeds (首次会下载, 慢是正常的;
+  下载一次后进本地缓存, 以后离线也能用);
+- 输出 `asset_root/cloud = None/空` → 按脚本打印的提示修复 (联网开一次 Sim UI
+  或手动 set 回默认云端地址);
+- 输出 `状态 0 = 不可达` (常见于部分网络环境) → ① 换网/代理后重试;
+  ② 或完全绕开云端: 用 Sim 的 URDF Importer 把本地 URDF 转成 USD, 回放时
+  `--usd` 指定它——**回放脚本已内置本地地面兜底** (云端失败自动换 Cuboid 地面),
+  这条路完全离线可用。
+
 ### 4. 下一步学习路线
 
 - 官方教程（就在本地仓库）：`C:\isaac-lab\scripts\tutorials\` 从 `00_sim` 往后按序看；
