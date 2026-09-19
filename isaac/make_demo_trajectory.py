@@ -107,7 +107,7 @@ def main():
         drop = (thigh_z + shin_z) * (1.0 - math.cos(HIP))
     except Exception:
         pass
-    print("[demo] 根高 H=%.4f m, 蹲深=%.4f m" % (H, drop))
+    print("[demo] 站立根高 %.4f m (回放端自动叠加), 蹲深=%.4f m" % (H, drop))
 
     n = int(args.duration * args.fps)
     t = np.arange(n) / args.fps
@@ -141,7 +141,8 @@ def main():
                   + [(jn, "<f8") for jn in jnames])
     arr = np.zeros(n, dtype=dt)
     arr["time"] = t
-    arr["root_pos"][:, 2] = H - drop * s               # 蹲下时根下沉 (与腿缩短量一致, 脚底贴地)
+    arr["root_pos"][:, 2] = -drop * s                  # 绑定相对: 蹲下时根下沉 (与腿缩短量一致;
+                                                       # 回放端自动叠加初始站立高度, 脚底贴地)
     arr["root_quat_wxyz"][:, 0] = 1.0
     for jn in jnames:
         arr[jn] = pose[jn]

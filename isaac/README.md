@@ -31,7 +31,10 @@
 **数据内容**（每帧一行）：
 
 - **根轨迹**：pelvis（URDF 根 link）的**位置 (x,y,z) + 四元数 (w,x,y,z)**。
-  坐标系 = **URDF 原生 Z-up、米**（x 前、y 左、z 上），绑定帧时 = (0,0,0)+(1,0,0,0)。
+  坐标系 = **URDF 原生 Z-up、米**（x 前、y 左、z 上），**绑定相对**语义：
+  绑定姿势（站立）时 = (0,0,0)+(1,0,0,0)，数值表示"相对绑定姿势的运动"。
+  Isaac 回放脚本会自动把它叠加到机器人初始摆放上（世界位姿 = T₀ ∘ L，
+  站立时 pelvis 世界 z≈0.79）；因此**不要**把站立高度 0.79 写进数据。
 - **关节角**：53 个 URDF 关节，**弧度**，关节名与 Isaac 里的 articulation joint 名
   一致（即 URDF joint 名）；已按 URDF 限位 clamp，±180° 以上量程的关节自动处理
   ±360° 环绕歧义。
@@ -312,6 +315,22 @@ Isaac Sim 5.x 的内置资产 (地面 / 机器人 USD) 默认**按需从 NVIDIA 
   ② 或完全绕开云端: 用 Sim 的 URDF Importer 把本地 URDF 转成 USD, 回放时
   `--usd` 指定它——**回放脚本已内置本地地面兜底** (云端失败自动换 Cuboid 地面),
   这条路完全离线可用。
+
+### 3.7 回放排障速查
+
+- **机器人陷进地面 / 悬在半空**：根轨迹是"绑定相对"语义（绑定时=(0,0,0)），
+  回放端自动叠加初始摆放（2025-09-19 修复；旧回放脚本会把它当世界坐标直接写，
+  导致 pelvis 被按到 z=0 陷地 0.79 m）。若仍异常，检查 npy 的 root_pos——站立帧
+  的 z 应≈0，蹲下为负；
+- **某些动作放不出来（如弯腰）**：内置 G1 只有 37 关节，**没有 waist_pitch /
+  waist_roll / 手腕 / 手指**（腰只有 torso_joint=偏航）。K 在躯干上的弯腰会全落进
+  `waist_pitch_joint`——内置机器人无此关节，直接被跳过。解法：URDF Importer 转
+  DFQ 版 USD 后 `--usd` 回放（53 关节全匹配，见 3.6）；
+- 查自己 npy 里哪些关节真的动了（Isaac 的 python 带 numpy）：
+
+```powershell
+& "C:\isaac-lab\_isaac_sim\python.bat" -c "import numpy as np; d = np.load(r'D:\BlenderPro\G1\g1_anim.npy'); [print(n, round(float(d[n].min()),3), round(float(d[n].max()),3)) for n in d.dtype.names if n not in ('time','root_pos','root_quat_wxyz') and np.abs(d[n]).max() > 0.05]"
+```
 
 ### 4. 下一步学习路线
 
