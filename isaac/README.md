@@ -9,6 +9,7 @@
 | `export_animation_blender.py` | Blender 5（GUI 或 `--background`） | .blend 里的 Action / 手 K / 重定向结果 |
 | `export_animation_maya.py` | Maya 2025（Script Editor, Python 标签） | FBX/USD 导入的动画、HIK bake 结果 |
 | `export_animation_motionbuilder.py` | MotionBuilder（Python Editor, F11） | HIK 重定向 + Plot 之后的烘焙动画 |
+| `replay_trajectory_isaaclab.py` | Isaac Lab 2.3（`isaaclab.bat -p`） | 回放上面导出的 .npy（视觉预览 / pink-IK 参考） |
 
 **前置条件**：`_skeleton_meta.json` 必须是 **2025-09-19 之后**管线生成的版本
 （含 `bind_local16` / `axis_parent_local` / `root_bind16` 字段）。旧 meta 请重跑
@@ -93,7 +94,56 @@ CSV 第一行应满足：
 对不上 = 数据版本或节点链问题（最常见：meta 是旧版，或 Maya/MB 里骨架被套了
 额外变换——看脚本打印的 `[note]`/`[warn]`）。
 
-## 四、动捕工作流建议（与 motionbuilder/ 资产配合）
+## 四、在 Isaac Lab 里回放（Windows 快速上手）
+
+环境约定：`C:\isaac-lab`（Isaac Lab 2.3.0）+ `C:\isaac-sim`（Isaac Sim 5.1.0）——这正好是官方配对版本（Lab 2.3.0 基于 Sim 5.1 构建）。RTX 4080 + 580 驱动满足要求。
+
+### 0. 心智模型（1 分钟）
+
+- **Isaac Sim** = 引擎 + UI（你已经能打开的那个窗口）；
+- **Isaac Lab** = 构建在 Sim 之上的 Python 机器人学习框架，一切通过命令行跑；
+- `isaaclab.bat`（在 `C:\isaac-lab` 根目录）是你的总入口：
+  - `isaaclab.bat -p 脚本.py` → 用 Isaac Sim 自带的 Python 跑脚本（**最常用**）
+  - `isaaclab.bat -s` → 启动 Sim UI
+  - `isaaclab.bat -n` → 从模板新建项目
+  - `isaaclab.bat -i` → 安装依赖/学习框架
+
+### 1. 验证安装（第一次必做）
+
+```bat
+cd C:\isaac-lab
+isaaclab.bat -p scripts\tutorials\00_sim\create_empty.py
+```
+
+能弹出一个空场景窗口 = Lab 装好了。再跑个自带 G1 的演示：
+
+```bat
+isaaclab.bat -p scripts\demos\bipeds.py
+```
+
+### 2. 回放我们导出的动捕动画（`replay_trajectory_isaaclab.py`）
+
+把本目录的 `replay_trajectory_isaaclab.py` 和导出的 `g1_anim.npy`（及 `_columns.json`）放好，然后：
+
+```bat
+cd C:\isaac-lab
+isaaclab.bat -p D:\BlenderPro\G1\replay_trajectory_isaaclab.py --npy D:\BlenderPro\G1\g1_anim.npy
+```
+
+- **默认预览模式**：关重力、逐帧写关节状态+根位姿 → 精确运动学回放（不需要平衡控制器，动捕长什么样机器人就摆什么样）；
+- `--physics`：物理模式（重力 + 关节目标），机器人可能会倒——那正是之后 pink-IK/RL 要解决的部分；
+- `--loop` 循环、`--speed 0.5` 慢放、`--headless --video` 无窗口录像；
+- **关节按名字匹配**：内置 G1 是 29dof 身体版，我们数据里的 22 个手指关节会自动跳过（有提示）；想连手指回放，用 Isaac Sim 的 URDF Importer 把 `g1_29dof_rev_1_0_with_inspire_hand_DFQ.urdf` 转成 USD，再 `--usd 转换结果.usd` → 53 关节全匹配（URDF 导入时关节名会保留）。
+
+数据坐标系无需转换：我们的根轨迹是 URDF Z-up/米，Isaac Sim 世界同样是 Z-up/米。
+
+### 3. 下一步学习路线
+
+- 官方教程（就在本地仓库）：`C:\isaac-lab\scripts\tutorials\` 从 `00_sim` 往后按序看；
+- RL 训练一个任务试试水：`isaaclab.bat -p scripts\reinforcement_learning\rsl_rl\train.py --task=Isaac-Ant-v0 --headless`；
+- **pink-IK**：pink 是独立的 Python 库（基于 pinocchio，`isaaclab.bat -m pip install pink` 装），典型用法是离线或在控制循环里解 IK 生成关节目标——我们导出的根轨迹+关节角正是它的参考输入/初值来源；pink 解出的目标序列同样可以用回放脚本预览。
+
+### 4. 完整链路（推荐工作流）
 
 ```
 动捕源(BVH/FBX) ──► MotionBuilder: characterize_g1.py 角色化 + 重定向 + Plot
@@ -102,7 +152,10 @@ CSV 第一行应满足：
           isaac/export_animation_motionbuilder.py
                         │
                         ▼
-              g1_anim.csv / .npy ──► Isaac (pink-IK 参考轨迹 / 模仿学习数据)
+              g1_anim.npy ──► replay_trajectory_isaaclab.py 视觉预览
+                        │
+                        ▼
+              pink-IK / 模仿学习 / RL (Isaac Lab)
 ```
 
 也可在 Maya（HIK bake 后）或 Blender（重定向/手 K）导出，殊途同归。
