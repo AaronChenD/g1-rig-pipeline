@@ -201,6 +201,21 @@ def main():
     root_pos = np.asarray(data["root_pos"], dtype=float) if "root_pos" in data.dtype.names else None
     root_quat = np.asarray(data["root_quat_wxyz"], dtype=float) if "root_quat_wxyz" in data.dtype.names else None
 
+    # ---- 数据动静自检 (区分: 数据静止 vs 动作全在不匹配的关节上) ----
+    amps = sorted(((jf, float(np.ptp(ang[jf]))) for jf in joint_fields),
+                  key=lambda kv: -kv[1])
+    moving = [(jf, a) for jf, a in amps if a > 0.02]
+    if moving:
+        def _tag(jf):
+            return "" if jf in idx_map else " (此机器人无,跳过)"
+        top = ", ".join("%s %.2f%s" % (jf, a, _tag(jf)) for jf, a in moving[:8])
+        print("[replay] 数据中在动的关节 %d/%d (幅度>0.02 rad): %s%s"
+              % (len(moving), len(joint_fields), top,
+                 " ..." if len(moving) > 8 else ""))
+    else:
+        print("[replay][警告] 数据里几乎没有关节在动 (最大幅度 %.4f rad)" % amps[0][1])
+        print("           -> 问题在导出侧: 回 Blender 检查 (姿势模式 K 帧 / 骨架名 / 帧范围)")
+
     def sample(t):
         t = float(np.clip(t, 0.0, t_data[-1]))
         i1 = int(np.searchsorted(t_data, t))

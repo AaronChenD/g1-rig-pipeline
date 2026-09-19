@@ -268,6 +268,24 @@ def run(cfg):
             stats[e["joint"]]["res_max"] = max(stats[e["joint"]]["res_max"], res)
         rows.append(row)
 
+    # ---- 动静自检: 有没有真的抓到动画 ----
+    movers = []
+    for e in joints:
+        vals = [r[e["joint"]] for r in rows]
+        amp = max(vals) - min(vals)
+        if amp > 0.02:
+            movers.append((e["joint"], amp))
+    movers.sort(key=lambda kv: -kv[1])
+    if movers:
+        print("[export] 有动画的关节 %d/%d, 幅度前五: %s"
+              % (len(movers), len(joints),
+                 ", ".join("%s %.2f" % (jn, a) for jn, a in movers[:5])))
+    else:
+        print("[export][警告] 所有关节幅度≈0 — 没抓到动画!")
+        print("  排查: 1) 关键帧是否 K 在 姿势模式(Pose Mode) 的骨骼上")
+        print("           (对象模式/物体级的动画不会写进骨骼, 导出全为 0)")
+        print("        2) 场景里若有多个 Armature, 在 CONFIG['armature'] 填骨架名")
+        print("        3) 场景帧范围(起始/结束帧)是否覆盖了关键帧区间")
     _write_outputs(cfg, meta, joints, rows, fps, stats)
     return rows
 
