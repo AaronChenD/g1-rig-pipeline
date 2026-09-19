@@ -46,7 +46,13 @@ import numpy as np
 import torch
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import Articulation, ArticulationCfg, ArticulationInitStateCfg
+from isaaclab.assets import Articulation, ArticulationCfg
+
+# InitState 配置类: Isaac Lab 2.3+ 是 ArticulationCfg 的嵌套类, 旧版为顶层导出
+try:
+    from isaaclab.assets import ArticulationInitStateCfg  # 旧版 (<=2.2)
+except ImportError:
+    ArticulationInitStateCfg = ArticulationCfg.InitialStateCfg  # v2.3+
 from isaaclab.sim import SimulationContext
 
 
@@ -67,12 +73,12 @@ def build_robot_cfg(usd_override):
     """内置 G1 (isaaclab_assets) 为基础; 允许覆盖 USD 与固定根。"""
     cfg = None
     try:
-        from isaaclab_assets.robots.unitree import UNITREE_G1
-        cfg = UNITREE_G1.copy()
+        from isaaclab_assets.robots.unitree import G1_CFG   # Isaac Lab 2.3 命名
+        cfg = G1_CFG.copy()
     except Exception:
         try:
-            from isaaclab_assets.robots.unitree import G1_CFG   # 旧命名
-            cfg = G1_CFG.copy()
+            from isaaclab_assets.robots.unitree import UNITREE_G1  # 旧版命名
+            cfg = UNITREE_G1.copy()
         except Exception:
             cfg = None
     if cfg is None:
@@ -195,11 +201,11 @@ def main():
 
     # ---- 写入 API (兼容 2.x 的两种命名) ----
     def write_root(p, quat_wxyz):
-        pos = torch.tensor([p], dtype=torch.float, device=dev)
-        quat = torch.tensor([quat_wxyz], dtype=torch.float, device=dev)
+        # API 需要 (N,7) 张量: [x,y,z, qw,qx,qy,qz], 四元数 wxyz
+        pose = torch.tensor([list(p) + list(quat_wxyz)], dtype=torch.float, device=dev)
         fn = getattr(robot, "write_root_link_pose_to_sim", None) \
             or getattr(robot, "write_root_pose_to_sim")
-        fn((pos, quat))
+        fn(pose)
 
     # 初始帧
     q0, rp0, rq0 = sample(0.0)
@@ -219,7 +225,9 @@ def main():
             tgt = torch.zeros((1, n_j), dtype=torch.float, device=dev)
             for jf, i in idx_map.items():
                 tgt[0, i] = float(q[jf])
-            robot.write_joint_position_to_sim(tgt)
+            # 物理模式: 写 PD 目标 (经 actuator 产生力矩), 而非直接搬关节
+            robot.set_joint_position_target(tgt)
+            robot.write_data_to_sim()
         else:
             pos = torch.zeros((1, n_j), dtype=torch.float, device=dev)
             for jf, i in idx_map.items():

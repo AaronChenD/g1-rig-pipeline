@@ -256,6 +256,11 @@ cd C:\isaac-lab
 
 数据坐标系无需转换：我们的根轨迹是 URDF Z-up/米，Isaac Sim 世界同样是 Z-up/米。
 
+脚本已按 **Isaac Lab 2.3.0 源码逐 API 校对**（`ArticulationInitStateCfg` 在 2.3+
+是 `ArticulationCfg` 的嵌套类；根位姿写入要 (N,7) 张量、四元数 wxyz；内置 G1 配置名
+为 `G1_CFG`；物理模式走 `set_joint_position_target`+`write_data_to_sim` 的 PD 目标），
+同时保留旧版 Isaac Lab 的兼容分支。
+
 ### 3.5 bipeds.py / 回放崩溃: "GetPrimAtPath(Stage, NoneType)"
 
 Isaac Sim 5.x 的内置资产 (地面 / 机器人 USD) 默认**按需从 NVIDIA 云端下载**
