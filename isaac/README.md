@@ -103,31 +103,47 @@ CSV 第一行应满足：
 - **Isaac Sim** = 引擎 + UI（你已经能打开的那个窗口）；
 - **Isaac Lab** = 构建在 Sim 之上的 Python 机器人学习框架，一切通过命令行跑；
 - `isaaclab.bat`（在 `C:\isaac-lab` 根目录）是你的总入口：
-  - `isaaclab.bat -p 脚本.py` → 用 Isaac Sim 自带的 Python 跑脚本（**最常用**）
+  - `.\isaaclab.bat -p 脚本.py` → 用 Isaac Sim 自带的 Python 跑脚本（**最常用**；PowerShell 必须带 `.\` 前缀）
   - `isaaclab.bat -s` → 启动 Sim UI
   - `isaaclab.bat -n` → 从模板新建项目
   - `isaaclab.bat -i` → 安装依赖/学习框架
 
-### 1. 验证安装（第一次必做）
+### 1. Windows 两个坑（PowerShell 必读）
+
+- **PowerShell 不执行当前目录的程序**，必须加 `\` 前缀：`.\isaaclab.bat ...`
+  （用 cmd.exe 则不用前缀，直接 `isaaclab.bat` 即可）；
+- **别从聊天窗口/网页直接复制命令**——富文本会把文件名变成
+  `create_[empty.py](http://...)` 这种带链接的坏名字，请手动敲或用纯文本粘贴。
+
+如果运行时报找不到 Isaac Sim，按官方文档设环境变量（你的 Sim 装在 `C:\isaac-sim`）：
+
+```bat
+setx ISAACSIM_PATH "C:\isaac-sim"
+```
+
+（新开一个终端生效；仅当前会话用 `set ISAACSIM_PATH=C:\isaac-sim` 或 PowerShell 的
+`$env:ISAACSIM_PATH = "C:\isaac-sim"`。）
+
+### 2. 验证安装（第一次必做）
 
 ```bat
 cd C:\isaac-lab
-isaaclab.bat -p scripts\tutorials\00_sim\create_empty.py
+.\isaaclab.bat -p scripts\tutorials\00_sim\create_empty.py
 ```
 
 能弹出一个空场景窗口 = Lab 装好了。再跑个自带 G1 的演示：
 
 ```bat
-isaaclab.bat -p scripts\demos\bipeds.py
+.\isaaclab.bat -p scripts\demos\bipeds.py
 ```
 
-### 2. 回放我们导出的动捕动画（`replay_trajectory_isaaclab.py`）
+### 3. 回放我们导出的动捕动画（`replay_trajectory_isaaclab.py`）
 
 把本目录的 `replay_trajectory_isaaclab.py` 和导出的 `g1_anim.npy`（及 `_columns.json`）放好，然后：
 
 ```bat
 cd C:\isaac-lab
-isaaclab.bat -p D:\BlenderPro\G1\replay_trajectory_isaaclab.py --npy D:\BlenderPro\G1\g1_anim.npy
+.\isaaclab.bat -p D:\BlenderPro\G1\replay_trajectory_isaaclab.py --npy D:\BlenderPro\G1\g1_anim.npy
 ```
 
 - **默认预览模式**：关重力、逐帧写关节状态+根位姿 → 精确运动学回放（不需要平衡控制器，动捕长什么样机器人就摆什么样）；
@@ -137,13 +153,13 @@ isaaclab.bat -p D:\BlenderPro\G1\replay_trajectory_isaaclab.py --npy D:\BlenderP
 
 数据坐标系无需转换：我们的根轨迹是 URDF Z-up/米，Isaac Sim 世界同样是 Z-up/米。
 
-### 3. 下一步学习路线
+### 4. 下一步学习路线
 
 - 官方教程（就在本地仓库）：`C:\isaac-lab\scripts\tutorials\` 从 `00_sim` 往后按序看；
 - RL 训练一个任务试试水：`isaaclab.bat -p scripts\reinforcement_learning\rsl_rl\train.py --task=Isaac-Ant-v0 --headless`；
 - **pink-IK**：pink 是独立的 Python 库（基于 pinocchio，`isaaclab.bat -m pip install pink` 装），典型用法是离线或在控制循环里解 IK 生成关节目标——我们导出的根轨迹+关节角正是它的参考输入/初值来源；pink 解出的目标序列同样可以用回放脚本预览。
 
-### 4. 完整链路（推荐工作流）
+### 5. 完整链路（推荐工作流）
 
 ```
 动捕源(BVH/FBX) ──► MotionBuilder: characterize_g1.py 角色化 + 重定向 + Plot
