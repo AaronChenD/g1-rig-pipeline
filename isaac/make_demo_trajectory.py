@@ -37,8 +37,19 @@ def main():
 
     import numpy as np
 
-    with open(args.meta, "r", encoding="utf-8") as f:
-        meta = json.load(f)
+    try:
+        with open(args.meta, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+    except FileNotFoundError:
+        print("[demo][ERROR] 找不到 meta 文件: %s" % args.meta)
+        print("  meta 是 Blender 里 blender_import_urdf.py 生成的, 写在 URDF 同目录")
+        print("  (文件名 = <URDF名>_skeleton_meta.json)。两个办法:")
+        print("  1) 搜索现有 meta (找到后用 --meta <路径> 指定, 文件名 Tab 补全):")
+        print('       Get-ChildItem D:\\BlenderPro -Recurse -Filter *_meta.json')
+        print("  2) 下载仓库示例 meta (与默认同名, 生成演示轨迹够用) 到默认路径:")
+        print("     Invoke-WebRequest https://raw.githubusercontent.com/AaronChenD/g1-rig-pipeline/arena/01a0b00d-g1-rig-pipeline/docs/example/g1_29dof_rev_1_0_with_inspire_hand_DFQ_skeleton_meta.json -OutFile \"%s\"" % args.meta)
+        print("     (上面 URL 从本控制台复制是纯文本, 安全; 从聊天窗口复制会被富文本损坏)")
+        raise SystemExit(1)
     joints = [e for e in meta["joints"]
               if e.get("type") in ("revolute", "continuous") and e.get("limits")]
     jnames = [e["joint"] for e in joints]
