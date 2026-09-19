@@ -114,6 +114,22 @@ CSV 第一行应满足：
   （用 cmd.exe 则不用前缀，直接 `isaaclab.bat` 即可）；
 - **别从聊天窗口/网页直接复制命令**——富文本会把文件名变成
   `create_[empty.py](http://...)` 这种带链接的坏名字，请手动敲或用纯文本粘贴。
+  **根治办法**：文件名不经过聊天窗口——让 PowerShell 从 GitHub API 拿文件名,
+  一键把本目录 (isaac/) 所有 `.py`+`.md` 下载到 `D:\BlenderPro\G1\`
+  (此块可整段粘贴, 里面没有任何会被富文本改坏的文件名字面量):
+
+  ```powershell
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  $dir  = "D:\BlenderPro\G1"
+  $api  = "https://api.github.com/repos/AaronChenD/g1-rig-pipeline/contents/isaac?ref=arena/01a0b00d-g1-rig-pipeline"
+  foreach ($f in (Invoke-RestMethod $api | Where-Object { $_.name -match '\.(py|md)$' })) {
+      Invoke-WebRequest $f.download_url -OutFile (Join-Path $dir $f.name)
+      "已下载 " + $f.name
+  }
+  ```
+
+  之后运行长命令时, 文件名部分用 **Tab 补全**: 敲到 `...\\check_` 按 Tab,
+  PowerShell 会自动补全成正确文件名, 不会被富文本污染。
 
 ### 1.5 批处理文件行尾坑（症状：一堆 '不是内部或外部命令' 的残片）
 
