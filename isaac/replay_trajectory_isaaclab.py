@@ -114,13 +114,42 @@ def main():
     sim_dt = 1.0 / fps / max(args_cli.speed, 1e-3)
     sim = SimulationContext(sim_utils.SimulationCfg(dt=sim_dt, gravity=gravity,
                                                     device=args_cli.device))
-    # 地面 + 灯光
-    ground = sim_utils.GroundPlaneCfg()
-    ground.func("/World/GroundPlane", ground)
+    # ---- 机器人资产预检 (内置 G1 在云端; 不可达时给明确对策) ----
+    robot_cfg = build_robot_cfg(args_cli.usd)
+    usd_path = str(getattr(robot_cfg.spawn, "usd_path", "") or "")
+    if usd_path and not os.path.isfile(usd_path):
+        try:
+            from isaaclab.utils.assets import check_file_path
+            if check_file_path(usd_path) == 0:
+                print("[replay][ERROR] 内置 G1 的云端资产不可达:\n        %s" % usd_path)
+                print("        对策: ① 联网/代理后重试 (首次会下载并缓存, 之后离线可用);")
+                print("              ② 或用 --usd 指向本地 USD (Isaac Sim URDF Importer")
+                print("                 转换的 DFQ 版, 53 关节全匹配, 完全离线)。")
+                simulation_app.close()
+                raise SystemExit(1)
+        except SystemExit:
+            raise
+        except Exception as e:
+            print("[replay][note] 资产预检跳过 (%s)" % e)
+
+    # ---- 地面: 官方 Grid USD; 云端不可达时用本地 Cuboid 兜底 (无需下载) ----
+    try:
+        ground = sim_utils.GroundPlaneCfg()
+        ground.func("/World/GroundPlane", ground)
+        print("[replay] 地面: 官方 Grid USD (云端)")
+    except Exception as e:
+        floor = sim_utils.CuboidCfg(
+            size=(20.0, 20.0, 0.1),
+            collision_props=sim_utils.CollisionCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.18, 0.22, 0.28)),
+        )
+        floor.func("/World/GroundCuboid", floor, translation=(0.0, 0.0, -0.05))
+        print("[replay] 地面: 云端资产不可用 (%s) -> 已用本地 Cuboid 兜底" % type(e).__name__)
+
     light = sim_utils.DomeLightCfg(intensity=2000.0)
     light.func("/World/DomeLight", light)
 
-    robot = Articulation(cfg=build_robot_cfg(args_cli.usd))
+    robot = Articulation(cfg=robot_cfg)
     sim.reset()
     robot.reset()
 
