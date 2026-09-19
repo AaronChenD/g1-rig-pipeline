@@ -89,12 +89,13 @@ def build_robot_cfg(usd_override):
         except Exception:
             raise RuntimeError("找不到内置 G1 资产配置 —— 请用 --usd 指定机器人 USD 路径")
         cfg = ArticulationCfg(
-            prim_path="{regex:^/World/G1}",
+            prim_path="/World/G1",
             spawn=sim_utils.UsdFileCfg(usd_path=usd),
             init_state=ArticulationInitStateCfg(pos=[0.0, 0.0, 0.79]),
             actuators={},
         )
-    cfg.prim_path = "{regex:^/World/G1}"
+    # v2.3.0: prim path 必须是普通全局路径 (以 / 开头), {regex:...} 包裹语法已废除
+    cfg.prim_path = "/World/G1"
     if usd_override:
         cfg.spawn.usd_path = usd_override
     cfg.init_state = ArticulationInitStateCfg(pos=[0.0, 0.0, 0.7923])
@@ -118,8 +119,11 @@ def main():
     # ---- 仿真上下文 ----
     gravity = (0.0, 0.0, -9.81) if args_cli.physics else (0.0, 0.0, 0.0)
     sim_dt = 1.0 / fps / max(args_cli.speed, 1e-3)
-    sim = SimulationContext(sim_utils.SimulationCfg(dt=sim_dt, gravity=gravity,
-                                                    device=args_cli.device))
+    sim = SimulationContext(sim_utils.SimulationCfg(
+        dt=sim_dt, gravity=gravity, device=args_cli.device,
+        # 30fps 时 dt=0.0333s > 官方推荐阈值, 开稳定化避免大步长物理问题
+        physx=sim_utils.PhysxCfg(enable_stabilization=True),
+    ))
     # ---- 机器人资产预检 (内置 G1 在云端; 不可达时给明确对策) ----
     robot_cfg = build_robot_cfg(args_cli.usd)
     usd_path = str(getattr(robot_cfg.spawn, "usd_path", "") or "")
