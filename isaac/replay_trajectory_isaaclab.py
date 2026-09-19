@@ -164,17 +164,32 @@ def main():
     robot.reset()
 
     # ---- 关节名匹配 (数据字段 -> 机器人关节索引) ----
+    # 内置 G1 (g1.usd) 与 URDF 命名有差异, 已知别名 (无对应的仍跳过):
+    #   URDF *_elbow_joint   <-> USD *_elbow_pitch_joint (USD 肘拆 pitch+roll, 取 pitch)
+    #   URDF waist_yaw_joint <-> USD torso_joint
+    # 内置版没有: 手腕 3x2、waist_roll/pitch、DFQ 手指 (走 --usd 本地转换路线可全对上)
+    ALIAS = {
+        "left_elbow_joint": "left_elbow_pitch_joint",
+        "right_elbow_joint": "right_elbow_pitch_joint",
+        "waist_yaw_joint": "torso_joint",
+    }
     rjoints = list(robot.joint_names)
-    idx_map, skipped = {}, []
+    idx_map, skipped, aliased = {}, [], []
     for jf in joint_fields:
-        jn = jf if jf in rjoints else jf.replace("_joint", "_joint")
+        jn = ALIAS.get(jf, jf)
         if jn in rjoints:
             idx_map[jf] = rjoints.index(jn)
+            if jn != jf:
+                aliased.append("%s->%s" % (jf, jn))
         else:
             skipped.append(jf)
+    if aliased:
+        print("[replay] 别名映射: " + ", ".join(aliased))
     if skipped:
-        print("[replay] 提示: %d 个数据关节目中没有对应关节 (如手指), 跳过: %s%s"
+        print("[replay] 提示: %d 个数据关节目中没有对应关节 (如手指/手腕), 跳过: %s%s"
               % (len(skipped), ", ".join(skipped[:6]), " ..." if len(skipped) > 6 else ""))
+        # 打印机器人实际关节名, 便于发现新的命名差异
+        print("[replay] 机器人关节名 (%d): %s" % (len(rjoints), ", ".join(rjoints)))
     matched = sorted(idx_map.items(), key=lambda kv: kv[1])
     print("[replay] 机器人关节数 %d, 匹配 %d" % (len(rjoints), len(matched)))
 
