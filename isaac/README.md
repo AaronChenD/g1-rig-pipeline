@@ -191,9 +191,13 @@ Test-Path C:\isaac-lab\_isaac_sim\python.bat    # 应输出 True
 > 预装一份旧 setuptools 再关掉构建隔离装 flatdict：
 >
 > ```powershell
-> & "C:\isaac-sim\python.bat" -m pip install "setuptools<81" wheel
-> & "C:\isaac-sim\python.bat" -m pip install flatdict==4.0.1 --no-build-isolation
+> & "C:\isaac-lab\_isaac_sim\python.bat" -m pip install setuptools==80.9.0 wheel
+> & "C:\isaac-lab\_isaac_sim\python.bat" -m pip install flatdict==4.0.1 --no-build-isolation
 > ```
+>
+> **坑：别在 bat 命令里写 `"setuptools<81"` 这种带 `<` 的版本约束**——PowerShell 5.1
+> 给 bat 传参时会丢掉手打的引号，cmd 收到裸的 `<81` 会当成"从文件 81 重定向输入"，
+> 瞬间报"系统找不到指定的文件"且 pip 根本没跑。一律用 `==` 具体版本号。
 >
 > 之后 `-i` 看到 flatdict 已满足就会跳过构建。若还有其他包报同样的
 > `pkg_resources` 错，同样套路处理。
