@@ -60,14 +60,15 @@ def main():
     # 站立 pelvis 高度: ground.pelvis_height_m (脚底贴 Z=0 时)。
     # 蹲深 = 髋-0.35/膝+0.70/踝-0.35 姿势下腿的竖直缩短量:
     #   大腿段 (hip_roll+hip_yaw+knee 的 z 分量) 与小腿段 (ankle_pitch 的 z) 各倾 0.35rad。
+    HIP, KNEE = 0.5, 1.0   # 髋-HIP / 膝+KNEE / 踝-HIP -> 脚掌保持水平, 膝盖前顶
     ground = meta.get("ground") or {}
     H = float(ground.get("pelvis_height_m", 0.79))
-    drop = 0.038
+    drop = (0.332 + 0.300) * (1.0 - math.cos(HIP))     # 兜底值
     try:
         thigh_z = sum(abs(jmap[n]["origin_xyz_m"][2]) for n in
                       ("left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint"))
         shin_z = abs(jmap["left_ankle_pitch_joint"]["origin_xyz_m"][2])
-        drop = (thigh_z + shin_z) * (1.0 - math.cos(0.35))
+        drop = (thigh_z + shin_z) * (1.0 - math.cos(HIP))
     except Exception:
         pass
     print("[demo] 根高 H=%.4f m, 蹲深=%.4f m" % (H, drop))
@@ -87,9 +88,9 @@ def main():
 
     pose = {jn: np.zeros(n) for jn in jnames}
     for side in ("left", "right"):
-        pose["%s_hip_pitch_joint" % side][:] = -0.35 * s
-        pose["%s_knee_joint" % side][:] = 0.70 * s
-        pose["%s_ankle_pitch_joint" % side][:] = -0.35 * s
+        pose["%s_hip_pitch_joint" % side][:] = -HIP * s
+        pose["%s_knee_joint" % side][:] = KNEE * s
+        pose["%s_ankle_pitch_joint" % side][:] = -HIP * s
     pose["waist_yaw_joint"][:] = twist
     # 右臂: 侧举 (roll 负 = 外展, 与 --pose tpose 实验一致) + 肘弯 + 腕摆
     if "right_shoulder_roll_joint" in pose:
