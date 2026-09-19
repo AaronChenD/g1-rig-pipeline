@@ -117,31 +117,35 @@ CSV 第一行应满足：
 
 ### 1.5 批处理文件行尾坑（症状：一堆 '不是内部或外部命令' 的残片）
 
-IsaacLab 官方仓库里的 `isaaclab.bat` 是 **LF（Unix）行尾**，且仓库没有为 `*.bat`
-强制 CRLF 的 gitattributes 规则。如果克隆时 git 的 `core.autocrlf=false`
-（"Checkout as-is"，Git 安装时的可选项之一），本地 bat 保持 LF → **cmd.exe 解析
-LF 批处理会错位**，表现为满屏 `'ause' / 'xists' / 'hon_exe' 不是内部或外部命令`
-之类的残片命令 + `此时不应有 |`，最后 `[ERROR] Unable to find any Python executable`。
+IsaacLab 官方仓库里的 `isaaclab.bat` 是 **LF（Unix）行尾**（v2.3.0 实测：673 个
+换行全是 LF、0 个 CRLF，且 `.gitattributes` 没有 `*.bat` 的 eol 规则）。**无论
+GitHub "Download ZIP"（打包的就是仓库原始字节，必然 LF）还是 `autocrlf=false` 的
+git 克隆，本地 bat 都是 LF** → cmd.exe 解析 LF 批处理会错位，表现为满屏
+`'ause' / 'xists' / 'hon_exe' 不是内部或外部命令` 之类的残片命令 +
+`此时不应有 |`，最后 `[ERROR] Unable to find any Python executable`。
 
-修复（PowerShell，一次性）：
+修复（PowerShell，一次性；**zip 安装与 git 克隆都适用**——直接转换行尾）：
 
 ```powershell
-cd C:\isaac-lab
-git config core.autocrlf true
-del isaaclab.bat
-git checkout -- isaaclab.bat
+$p = "C:\isaac-lab\isaaclab.bat"
+$t = [IO.File]::ReadAllText($p)
+[IO.File]::WriteAllText($p, ($t -replace "`r?`n", "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
 ```
 
-（`del + checkout` 强制按新配置重新检出，自动转成 CRLF。）
-如果还有其他 .bat 报同样错误，一键全修：
+（UTF-8 无 BOM 写回，不会引入新问题。）
+要一并修目录下所有 .bat：
 
 ```powershell
-Get-ChildItem C:\isaac-lab -Filter *.bat -Recurse -Depth 2 | ForEach-Object {
+Get-ChildItem "C:\isaac-lab" -Filter *.bat -Recurse | ForEach-Object {
     $t = [IO.File]::ReadAllText($_.FullName)
-    [IO.File]::WriteAllText($_.FullName, ($t -replace "`r?`n", "`r`n"))
+    [IO.File]::WriteAllText($_.FullName, ($t -replace "`r?`n", "`r`n"), (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "已修" $_.Name
 }
 ```
+
+> git 克隆用户的替代法：`git config core.autocrlf true` 后
+> `del isaaclab.bat; git checkout -- isaaclab.bat`（强制重新检出自动转 CRLF）。
+> zip 安装没有 .git，只能用上面的直接转换。
 
 验证 bat 修好了：`.\isaaclab.bat --help` 应打印 usage 帮助而不是报错。
 
@@ -155,6 +159,14 @@ setx ISAACSIM_PATH "C:\isaac-sim"
 `$env:ISAACSIM_PATH = "C:\isaac-sim"`。）
 
 ### 2. 验证安装（第一次必做）
+
+> **zip 安装的用户**：zip 里只是源码，必须先把 Isaac Lab 装进 Sim 的 Python
+> （需联网，几分钟~十几分钟），否则任何脚本都会 `ModuleNotFoundError: isaaclab`：
+>
+> ```powershell
+> cd C:\isaac-lab
+> .\isaaclab.bat -i
+> ```
 
 ```bat
 cd C:\isaac-lab
