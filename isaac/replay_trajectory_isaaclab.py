@@ -46,6 +46,7 @@ import numpy as np
 import torch
 
 import isaaclab.sim as sim_utils
+from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import Articulation, ArticulationCfg
 
 # InitState 配置类: Isaac Lab 2.3+ 是 ArticulationCfg 的嵌套类, 旧版为顶层导出
@@ -97,9 +98,15 @@ def build_robot_cfg(usd_override):
     # v2.3.0: prim path 必须是普通全局路径 (以 / 开头), {regex:...} 包裹语法已废除
     cfg.prim_path = "/World/G1"
     if usd_override:
-        # 自定义 USD: 用干净的 spawn (不继承内置 G1 的执行器正则 —— 那是为 29dof
-        # 命名 elbow_pitch_joint 等写的, 对 DFQ 名字无匹配会导致关节被踢出驱动组)
+        # 自定义 USD: spawn 和执行器都换成干净的 —— 内置 G1_CFG 的执行器正则是为
+        # 29dof 命名 (torso_joint / elbow_pitch_joint / *_five_joint...) 写的,
+        # 对 DFQ 名字 (waist_pitch_joint / elbow_joint / 手指...) 无匹配,
+        # 初始化时直接 ValueError: Not all regular expressions are matched
         cfg.spawn = sim_utils.UsdFileCfg(usd_path=usd_override)
+        cfg.actuators = {"all_joints": ImplicitActuatorCfg(
+            joint_names_expr=[".*"],        # 覆盖全部关节 (含 53 DFQ)
+            stiffness=100.0, damping=5.0,   # 与 convert_urdf_usd.py 默认一致
+        )}
     cfg.init_state = ArticulationInitStateCfg(pos=[0.0, 0.0, 0.7923])
     return cfg
 
