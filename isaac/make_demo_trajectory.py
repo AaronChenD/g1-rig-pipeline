@@ -56,6 +56,22 @@ def main():
     jmap = {e["joint"]: e for e in joints}
     print("[demo] 关节 %d 个 (来自 %s)" % (len(jnames), os.path.basename(args.meta)))
 
+    # ---- 根高基线与蹲深 (按 meta 几何实算, 勿手拍) ----
+    # 站立 pelvis 高度: ground.pelvis_height_m (脚底贴 Z=0 时)。
+    # 蹲深 = 髋-0.35/膝+0.70/踝-0.35 姿势下腿的竖直缩短量:
+    #   大腿段 (hip_roll+hip_yaw+knee 的 z 分量) 与小腿段 (ankle_pitch 的 z) 各倾 0.35rad。
+    ground = meta.get("ground") or {}
+    H = float(ground.get("pelvis_height_m", 0.79))
+    drop = 0.038
+    try:
+        thigh_z = sum(abs(jmap[n]["origin_xyz_m"][2]) for n in
+                      ("left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint"))
+        shin_z = abs(jmap["left_ankle_pitch_joint"]["origin_xyz_m"][2])
+        drop = (thigh_z + shin_z) * (1.0 - math.cos(0.35))
+    except Exception:
+        pass
+    print("[demo] 根高 H=%.4f m, 蹲深=%.4f m" % (H, drop))
+
     n = int(args.duration * args.fps)
     t = np.arange(n) / args.fps
 
@@ -88,7 +104,7 @@ def main():
                   + [(jn, "<f8") for jn in jnames])
     arr = np.zeros(n, dtype=dt)
     arr["time"] = t
-    arr["root_pos"][:, 2] = -0.12 * s                    # 蹲下时根下沉 (脚底大致贴地)
+    arr["root_pos"][:, 2] = H - drop * s               # 蹲下时根下沉 (与腿缩短量一致, 脚底贴地)
     arr["root_quat_wxyz"][:, 0] = 1.0
     for jn in jnames:
         arr[jn] = pose[jn]
