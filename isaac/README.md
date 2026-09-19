@@ -201,6 +201,17 @@ Test-Path C:\isaac-lab\_isaac_sim\python.bat    # 应输出 True
 >
 > 之后 `-i` 看到 flatdict 已满足就会跳过构建。若还有其他包报同样的
 > `pkg_resources` 错，同样套路处理。
+>
+> **`-i` 阶段两条已知无害提示**（上游 bat 自身的小毛病，非安装失败）：
+> - `文件名、目录名或卷标语法不正确。`——bat 里 torch 版本探测那句 `for /f`
+>   的嵌套引号在 cmd 下解析失败（v2.3.0 源码第 56 行）；
+> - `[INFO] Found PyTorch version .`（空版本号）——上一条的后果：探测不到
+>   Sim 自带 torch 的版本，于是 bat 卸掉重装 `torch==2.7.0+cu128`——这本来就是
+>   Isaac Lab 2.3 的官方要求版本，最终状态正确，等它装完即可。
+>
+> 装完验收：
+> `& "C:\isaac-lab\_isaac_sim\python.bat" -c "import torch; print(torch.__version__, torch.cuda.is_available())"`
+> 应输出 `2.7.0+cu128 True`；`import isaaclab; print(isaaclab.__version__)` 应为 `0.47.2`。
 
 ```bat
 cd C:\isaac-lab
