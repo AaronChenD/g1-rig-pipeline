@@ -1,0 +1,2 @@
+# cmd 解析 .bat 要求 CRLF; 防止 git autocrlf 在 checkout 时转成 LF
+*.bat text eol=crlf

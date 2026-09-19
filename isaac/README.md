@@ -118,9 +118,10 @@ CSV 第一行应满足：
   （用 cmd.exe 则不用前缀，直接 `isaaclab.bat` 即可）；
 - **别从聊天窗口/网页直接复制命令**——富文本会把文件名变成
   `create_[empty.py](http://...)` 这种带链接的坏名字，请手动敲或用纯文本粘贴。
-  **根治办法**：文件名不经过聊天窗口——让 PowerShell 从 GitHub API 拿文件名,
-  一键把本目录 (isaac/) 所有 `.py`+`.md` 下载到 `D:\BlenderPro\G1\`
-  (此块可整段粘贴, 里面没有任何会被富文本改坏的文件名字面量):
+  **根治办法**：文件名不经过聊天窗口。**首选 git**（脚本只存在于仓库里,
+  `git pull` 即更新, 见下方"目录约定"）；没有 git 时的备选——让 PowerShell
+  从 GitHub API 拿文件名, 把本目录 (isaac/) 所有 `.py`+`.md` 下载到
+  `D:\BlenderPro\G1\`（此块可整段粘贴, 无文件名字面量, 不会被富文本改坏）:
 
   ```powershell
   [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -246,23 +247,36 @@ cd C:\isaac-lab
 
 ### 3. 回放我们导出的动捕动画（`replay_trajectory_isaaclab.py`）
 
-**脚本更新**：本仓库 `git pull` 即可（脚本与资产路径解耦：`CONFIG` 默认指向
-`D:\BlenderPro\G1\`，仓库 clone 到哪里都行；两个 `.bat` 与 `.py` 同目录）。
+**目录约定（git 模式，脚本与数据分离）**：
 
-最省事——用本目录的 `replay_g1.bat`（在仓库 isaac/ 目录里，任何终端甚至资源
-管理器地址栏都能跑；它自动调用 `C:\isaac-lab\isaaclab.bat`，装在别处就先
-`set ISAACLAB_BAT=...`）：
+| 位置 | 放什么 | 谁管理 |
+|---|---|---|
+| 仓库 clone（示例 `D:\BlenderPro\g1-rig-pipeline`） | **全部脚本**（isaac/、scripts/…） | `git pull` 更新 |
+| `D:\BlenderPro\G1\` | **你的数据**：URDF、.blend、meta json、npy/csv 输出、g1_dfq.usd | 手动/脚本产出，不进 git |
+
+脚本里的 `CONFIG` 默认都指向 `D:\BlenderPro\G1\` 的数据文件，仓库 clone 到
+哪里都能直接跑。首次 clone（分支名照抄）：
+
+```powershell
+git clone -b arena/01a0b00d-g1-rig-pipeline https://github.com/AaronChenD/g1-rig-pipeline.git D:\BlenderPro\g1-rig-pipeline
+```
+
+更新只要 `git -C D:\BlenderPro\g1-rig-pipeline pull`（或 cd 进去 `git pull`）。
+**不要**把脚本复制到 `G1\` 目录——那会产生无法同步的旧拷贝。
+
+最省事——用仓库里的 `replay_g1.bat`（任何终端甚至资源管理器地址栏都能跑；
+它自动调用 `C:\isaac-lab\isaaclab.bat`，装在别处就先 `set ISAACLAB_BAT=...`）：
 
 ```bat
-D:\BlenderPro\G1\replay_g1.bat D:\BlenderPro\G1\myanim.npy --loop
-D:\BlenderPro\G1\replay_g1.bat D:\BlenderPro\G1\myanim.npy --usd D:\BlenderPro\G1\g1_dfq.usd --loop
+D:\BlenderPro\g1-rig-pipeline\isaac\replay_g1.bat D:\BlenderPro\G1\myanim.npy --loop
+D:\BlenderPro\g1-rig-pipeline\isaac\replay_g1.bat D:\BlenderPro\G1\myanim.npy --usd D:\BlenderPro\G1\g1_dfq.usd --loop
 ```
 
 或者手动完整命令（`.bat` 内容就是这个）：
 
 ```bat
 cd C:\isaac-lab
-.\isaaclab.bat -p D:\BlenderPro\G1\replay_trajectory_isaaclab.py --npy D:\BlenderPro\G1\g1_anim.npy
+.\isaaclab.bat -p D:\BlenderPro\g1-rig-pipeline\isaac\replay_trajectory_isaaclab.py --npy D:\BlenderPro\G1\g1_anim.npy
 ```
 
 - **默认预览模式**：关重力、逐帧写关节状态+根位姿 → 精确运动学回放（不需要平衡控制器，动捕长什么样机器人就摆什么样）；
@@ -287,7 +301,7 @@ Isaac Sim 5.x 的内置资产 (地面 / 机器人 USD) 默认**按需从 NVIDIA 
 排查 (本目录 `check_assets.py`):
 
 ```powershell
-.\isaaclab.bat -p D:\BlenderPro\G1\check_assets.py
+.\isaaclab.bat -p D:\BlenderPro\g1-rig-pipeline\isaac\check_assets.py
 ```
 
 - 输出 `状态 2 = 云端可达` → 直接重试 bipeds (首次会下载, 慢是正常的;
