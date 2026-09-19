@@ -115,6 +115,36 @@ CSV 第一行应满足：
 - **别从聊天窗口/网页直接复制命令**——富文本会把文件名变成
   `create_[empty.py](http://...)` 这种带链接的坏名字，请手动敲或用纯文本粘贴。
 
+### 1.5 批处理文件行尾坑（症状：一堆 '不是内部或外部命令' 的残片）
+
+IsaacLab 官方仓库里的 `isaaclab.bat` 是 **LF（Unix）行尾**，且仓库没有为 `*.bat`
+强制 CRLF 的 gitattributes 规则。如果克隆时 git 的 `core.autocrlf=false`
+（"Checkout as-is"，Git 安装时的可选项之一），本地 bat 保持 LF → **cmd.exe 解析
+LF 批处理会错位**，表现为满屏 `'ause' / 'xists' / 'hon_exe' 不是内部或外部命令`
+之类的残片命令 + `此时不应有 |`，最后 `[ERROR] Unable to find any Python executable`。
+
+修复（PowerShell，一次性）：
+
+```powershell
+cd C:\isaac-lab
+git config core.autocrlf true
+del isaaclab.bat
+git checkout -- isaaclab.bat
+```
+
+（`del + checkout` 强制按新配置重新检出，自动转成 CRLF。）
+如果还有其他 .bat 报同样错误，一键全修：
+
+```powershell
+Get-ChildItem C:\isaac-lab -Filter *.bat -Recurse -Depth 2 | ForEach-Object {
+    $t = [IO.File]::ReadAllText($_.FullName)
+    [IO.File]::WriteAllText($_.FullName, ($t -replace "`r?`n", "`r`n"))
+    Write-Host "已修" $_.Name
+}
+```
+
+验证 bat 修好了：`.\isaaclab.bat --help` 应打印 usage 帮助而不是报错。
+
 如果运行时报找不到 Isaac Sim，按官方文档设环境变量（你的 Sim 装在 `C:\isaac-sim`）：
 
 ```bat
