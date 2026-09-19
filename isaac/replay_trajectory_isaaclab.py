@@ -1,0 +1,385 @@
+# -*- coding: utf-8 -*-
+# replay_trajectory_isaaclab.py — 在 Isaac Lab 里回放管线导出的骨骼动画
+# ============================================================================
+# 作用: 读取 isaac/export_animation_*.py 导出的 .npy/.csv 轨迹, 在 Isaac Lab
+#       (Isaac Sim 5.1 + Lab 2.3, Windows/Linux 通用) 里驱动 G1 实时回放。
+#       用途: 动捕重定向结果的 3D 视觉预览 / 给 pink-IK 调参考轨迹。
+#
+# 用法 (Windows, 在 C:\isaac-lab 目录下):
+#   isaaclab.bat -p replay_trajectory_isaaclab.py --npy D:\BlenderPro\G1\g1_anim.npy
+#   常用参数:
+#     --usd <路径>      自定义机器人 USD (如你自己导入的 DFQ 灵巧手版 URDF)
+#     --physics         物理模式 (重力+PD 目标, 机器人可能倒, 适合测试动力学)
+#     --loop            循环播放
+#     --speed 0.5       慢放 (0.5 = 一半速)
+#     --headless --video 录像 (无窗口)
+#
+# 默认预览模式: 关重力 + 每帧写入关节状态/根位姿 = 精确运动学回放 (不需要平衡控制器)。
+# 关节按名字匹配: 内置 G1 是 29dof 身体关节, 我们数据里的手指关节会自动跳过并提示;
+# 想连手指一起回放, 用 --usd 指向你导入的 DFQ 版 USD (53 关节全匹配)。
+#
+# 注: 脚本按 Isaac Lab 2.3 API 编写; 个别接口名若有小版本差异, 按报错提示微调。
+# ============================================================================
+
+import argparse
+import json
+import math
+import os
+
+from isaaclab.app import AppLauncher
+
+parser = argparse.ArgumentParser(description="Replay g1-rig-pipeline animation in Isaac Lab")
+parser.add_argument("--npy", type=str, default="", help="export_animation_*.py 输出的 .npy 或 .csv")
+parser.add_argument("--latest", nargs="?", const=r"D:\BlenderPro\G1", metavar="DIR",
+                    help="一键模式: 自动用 DIR 里最新的 .npy/.csv (默认 D:\BlenderPro\G1)")
+parser.add_argument("--usd", type=str, default="",
+                    help="自定义机器人 USD 路径 (默认: D:\BlenderPro\G1\g1_dfq.usd 存在则自动用, 否则内置 G1)")
+parser.add_argument("--physics", action="store_true", help="物理模式 (重力+PD 目标)")
+parser.add_argument("--loop", action="store_true", help="循环播放")
+parser.add_argument("--speed", type=float, default=1.0, help="回放倍速")
+parser.add_argument("--fps", type=float, default=0.0, help="覆盖帧率 (默认读 _columns.json)")
+AppLauncher.add_app_launcher_args(parser)
+args_cli = parser.parse_args()
+
+app_launcher = AppLauncher(headless=args_cli.headless, video=args_cli.video if hasattr(args_cli, "video") else False)
+simulation_app = app_launcher.app
+
+# ---------------- Isaac Lab 层 (必须放在 AppLauncher 之后) --------------------
+import numpy as np
+import torch
+
+import isaaclab.sim as sim_utils
+from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.assets import Articulation, ArticulationCfg
+
+# InitState 配置类: Isaac Lab 2.3+ 是 ArticulationCfg 的嵌套类, 旧版为顶层导出
+try:
+    from isaaclab.assets import ArticulationInitStateCfg  # 旧版 (<=2.2)
+except ImportError:
+    ArticulationInitStateCfg = ArticulationCfg.InitialStateCfg  # v2.3+
+from isaaclab.sim import SimulationContext
+
+
+def load_motion(motion_path):
+    import numpy as _np
+    if motion_path.lower().endswith(".csv"):
+        # CSV (export_animation_*.py 同款格式): frame,time_s,root_x..root_qz,<关节名...>
+        raw = _np.atleast_1d(_np.genfromtxt(motion_path, delimiter=",", names=True,
+                                            dtype=None, encoding="utf-8"))
+        reserved = ("frame", "time_s", "root_x", "root_y", "root_z",
+                    "root_qw", "root_qx", "root_qy", "root_qz")
+        jnames = [n for n in raw.dtype.names if n not in reserved]
+        dt = _np.dtype([("time", "<f8"), ("root_pos", "<f8", (3,)),
+                        ("root_quat_wxyz", "<f8", (4,))] + [(jn, "<f8") for jn in jnames])
+        data = _np.zeros(len(raw), dtype=dt)
+        data["time"] = raw["time_s"]
+        for i, ax in enumerate("xyz"):
+            data["root_pos"][:, i] = raw["root_" + ax]
+        for i, qc in enumerate(("qw", "qx", "qy", "qz")):
+            data["root_quat_wxyz"][:, i] = raw["root_" + qc]
+        for jn in jnames:
+            data[jn] = raw[jn]
+    else:
+        data = _np.load(motion_path)
+    fps = 0.0
+    cols_path = os.path.splitext(motion_path)[0] + "_columns.json"
+    if os.path.isfile(cols_path):
+        with open(cols_path, "r", encoding="utf-8") as f:
+            fps = float(json.load(f).get("fps", 0.0))
+    if fps <= 0 and len(data) > 1:
+        fps = 1.0 / float(np.median(np.diff(data["time"])))
+    return data, fps
+
+
+def build_robot_cfg(usd_override):
+    """内置 G1 (isaaclab_assets) 为基础; 允许覆盖 USD 与固定根。"""
+    cfg = None
+    try:
+        from isaaclab_assets.robots.unitree import G1_CFG   # Isaac Lab 2.3 命名
+        cfg = G1_CFG.copy()
+    except Exception:
+        try:
+            from isaaclab_assets.robots.unitree import UNITREE_G1  # 旧版命名
+            cfg = UNITREE_G1.copy()
+        except Exception:
+            cfg = None
+    if cfg is None:
+        # 兜底: 自己拼 (Isaac Sim 5.1 自带资产路径, 首次加载可能需联网缓存)
+        try:
+            from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
+            usd = f"{ISAACLAB_NUCLEUS_DIR}/Robots/Unitree/G1/G1_with_hand/g1_29dof_with_hand_rev_1_0.usd"
+        except Exception:
+            raise RuntimeError("找不到内置 G1 资产配置 —— 请用 --usd 指定机器人 USD 路径")
+        cfg = ArticulationCfg(
+            prim_path="/World/G1",
+            spawn=sim_utils.UsdFileCfg(usd_path=usd),
+            init_state=ArticulationInitStateCfg(pos=[0.0, 0.0, 0.79]),
+            actuators={},
+        )
+    # v2.3.0: prim path 必须是普通全局路径 (以 / 开头), {regex:...} 包裹语法已废除
+    cfg.prim_path = "/World/G1"
+    if usd_override:
+        # 自定义 USD: spawn 和执行器都换成干净的 —— 内置 G1_CFG 的执行器正则是为
+        # 29dof 命名 (torso_joint / elbow_pitch_joint / *_five_joint...) 写的,
+        # 对 DFQ 名字 (waist_pitch_joint / elbow_joint / 手指...) 无匹配,
+        # 初始化时直接 ValueError: Not all regular expressions are matched
+        cfg.spawn = sim_utils.UsdFileCfg(usd_path=usd_override)
+        cfg.actuators = {"all_joints": ImplicitActuatorCfg(
+            joint_names_expr=[".*"],        # 覆盖全部关节 (含 53 DFQ)
+            stiffness=100.0, damping=5.0,   # 与 convert_urdf_usd.py 默认一致
+        )}
+    cfg.init_state = ArticulationInitStateCfg(pos=[0.0, 0.0, 0.7923])
+    return cfg
+
+
+def main():
+    # ---- 一键模式: 取目录里最新的 .npy/.csv ----
+    if args_cli.latest:
+        import glob
+        cands = [f for f in glob.glob(os.path.join(args_cli.latest, "*.npy"))
+                 + glob.glob(os.path.join(args_cli.latest, "*.csv"))]
+        if not cands:
+            print("[replay][ERROR] %s 里没有 .npy/.csv — 先在 Blender 里跑导出脚本" % args_cli.latest)
+            raise SystemExit(1)
+        args_cli.npy = max(cands, key=os.path.getmtime)
+        import time as _time
+        print("[replay] 一键模式: 最新数据 %s (修改于 %s)"
+              % (os.path.basename(args_cli.npy),
+                 _time.strftime("%H:%M:%S", _time.localtime(os.path.getmtime(args_cli.npy)))))
+    if not args_cli.npy:
+        print("[replay][ERROR] 需要 --npy <文件> 或 --latest [目录]")
+        raise SystemExit(1)
+    # ---- 自动 DFQ: 没显式指定 --usd 时, g1_dfq.usd 存在就用 (53 关节全匹配) ----
+    if not args_cli.usd and os.path.isfile(r"D:\BlenderPro\G1\g1_dfq.usd"):
+        args_cli.usd = r"D:\BlenderPro\G1\g1_dfq.usd"
+        print("[replay] 检测到 g1_dfq.usd -> 自动启用 53 关节 DFQ 版")
+
+    data, fps = load_motion(args_cli.npy)
+    if fps <= 0:
+        fps = 30.0
+    if args_cli.fps > 0:
+        fps = args_cli.fps
+    dur = float(data["time"][-1] - data["time"][0])
+    t_data = data["time"] - data["time"][0]
+    joint_fields = [n for n in data.dtype.names
+                    if n not in ("time", "root_pos", "root_quat_wxyz")]
+    print("[replay] 轨迹: %d 帧, %.2fs @ %g fps | 关节 %d | 根数据: %s"
+          % (len(data), dur, fps, len(joint_fields),
+             "有" if "root_pos" in data.dtype.names else "无"))
+
+    # ---- 仿真上下文 ----
+    # 重力常开: 预览模式每帧覆写关节+根位姿+速度 (运动学精确), 且落地校准需要重力
+    gravity = (0.0, 0.0, -9.81)
+    sim_dt = 1.0 / fps / max(args_cli.speed, 1e-3)
+    sim = SimulationContext(sim_utils.SimulationCfg(
+        dt=sim_dt, gravity=gravity, device=args_cli.device,
+        # 30fps 时 dt=0.0333s > 官方推荐阈值, 开稳定化避免大步长物理问题
+        physx=sim_utils.PhysxCfg(enable_stabilization=True),
+    ))
+    # ---- 机器人资产预检 (内置 G1 在云端; 不可达时给明确对策) ----
+    robot_cfg = build_robot_cfg(args_cli.usd)
+    usd_path = str(getattr(robot_cfg.spawn, "usd_path", "") or "")
+    if usd_path and not os.path.isfile(usd_path):
+        try:
+            from isaaclab.utils.assets import check_file_path
+            if check_file_path(usd_path) == 0:
+                print("[replay][ERROR] 内置 G1 的云端资产不可达:\n        %s" % usd_path)
+                print("        对策: ① 联网/代理后重试 (首次会下载并缓存, 之后离线可用);")
+                print("              ② 或用 --usd 指向本地 USD (Isaac Sim URDF Importer")
+                print("                 转换的 DFQ 版, 53 关节全匹配, 完全离线)。")
+                simulation_app.close()
+                raise SystemExit(1)
+        except SystemExit:
+            raise
+        except Exception as e:
+            print("[replay][note] 资产预检跳过 (%s)" % e)
+
+    # ---- 地面: 官方 Grid USD; 云端不可达时用本地 Cuboid 兜底 (无需下载) ----
+    try:
+        ground = sim_utils.GroundPlaneCfg()
+        ground.func("/World/GroundPlane", ground)
+        print("[replay] 地面: 官方 Grid USD (云端)")
+    except Exception as e:
+        floor = sim_utils.CuboidCfg(
+            size=(20.0, 20.0, 0.1),
+            collision_props=sim_utils.CollisionCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.18, 0.22, 0.28)),
+        )
+        floor.func("/World/GroundCuboid", floor, translation=(0.0, 0.0, -0.05))
+        print("[replay] 地面: 云端资产不可用 (%s) -> 已用本地 Cuboid 兜底" % type(e).__name__)
+
+    light = sim_utils.DomeLightCfg(intensity=2000.0)
+    light.func("/World/DomeLight", light)
+
+    robot = Articulation(cfg=robot_cfg)
+    sim.reset()
+    robot.reset()
+
+    # ---- 关节名匹配 (数据字段 -> 机器人关节索引) ----
+    # 内置 G1 (g1.usd) 与 URDF 命名有差异, 已知别名 (无对应的仍跳过):
+    #   URDF *_elbow_joint   <-> USD *_elbow_pitch_joint (USD 肘拆 pitch+roll, 取 pitch)
+    #   URDF waist_yaw_joint <-> USD torso_joint
+    # 内置版没有: 手腕 3x2、waist_roll/pitch、DFQ 手指 (走 --usd 本地转换路线可全对上)
+    ALIAS = {
+        "left_elbow_joint": "left_elbow_pitch_joint",
+        "right_elbow_joint": "right_elbow_pitch_joint",
+        "waist_yaw_joint": "torso_joint",
+    }
+    rjoints = list(robot.joint_names)
+    idx_map, skipped, aliased = {}, [], []
+    for jf in joint_fields:
+        jn = ALIAS.get(jf, jf)
+        if jn in rjoints:
+            idx_map[jf] = rjoints.index(jn)
+            if jn != jf:
+                aliased.append("%s->%s" % (jf, jn))
+        else:
+            skipped.append(jf)
+    if aliased:
+        print("[replay] 别名映射: " + ", ".join(aliased))
+    if skipped:
+        print("[replay] 提示: %d 个数据关节目中没有对应关节 (如手指/手腕), 跳过: %s%s"
+              % (len(skipped), ", ".join(skipped[:6]), " ..." if len(skipped) > 6 else ""))
+        # 打印机器人实际关节名, 便于发现新的命名差异
+        print("[replay] 机器人关节名 (%d): %s" % (len(rjoints), ", ".join(rjoints)))
+    matched = sorted(idx_map.items(), key=lambda kv: kv[1])
+    print("[replay] 机器人关节数 %d, 匹配 %d" % (len(rjoints), len(matched)))
+
+    dev = robot.device
+    n_j = len(rjoints)
+    # 数据列 -> 数组
+    ang = {jf: np.asarray(data[jf], dtype=float) for jf in joint_fields}
+    root_pos = np.asarray(data["root_pos"], dtype=float) if "root_pos" in data.dtype.names else None
+    root_quat = np.asarray(data["root_quat_wxyz"], dtype=float) if "root_quat_wxyz" in data.dtype.names else None
+
+    # ---- 数据动静自检 (区分: 数据静止 vs 动作全在不匹配的关节上) ----
+    amps = sorted(((jf, float(np.ptp(ang[jf]))) for jf in joint_fields),
+                  key=lambda kv: -kv[1])
+    moving = [(jf, a) for jf, a in amps if a > 0.02]
+    if moving:
+        def _tag(jf):
+            return "" if jf in idx_map else " (此机器人无,跳过)"
+        top = ", ".join("%s %.2f%s" % (jf, a, _tag(jf)) for jf, a in moving[:8])
+        print("[replay] 数据中在动的关节 %d/%d (幅度>0.02 rad): %s%s"
+              % (len(moving), len(joint_fields), top,
+                 " ..." if len(moving) > 8 else ""))
+    else:
+        print("[replay][警告] 数据里几乎没有关节在动 (最大幅度 %.4f rad)" % amps[0][1])
+        print("           -> 问题在导出侧: 回 Blender 检查 (姿势模式 K 帧 / 骨架名 / 帧范围)")
+
+    def sample(t):
+        t = float(np.clip(t, 0.0, t_data[-1]))
+        i1 = int(np.searchsorted(t_data, t))
+        i0 = max(i1 - 1, 0)
+        i1 = min(i1, len(t_data) - 1)
+        a = t_data[i1] - t_data[i0]
+        w = 0.0 if a <= 0 else (t - t_data[i0]) / a
+        q = {}
+        for jf in joint_fields:
+            q[jf] = ang[jf][i0] * (1 - w) + ang[jf][i1] * w
+        rp = rq = None
+        if root_pos is not None:
+            rp = root_pos[i0] * (1 - w) + root_pos[i1] * w
+            rq = root_quat[i0] * (1 - w) + root_quat[i1] * w
+            nq = math.sqrt(float(np.sum(rq * rq)))
+            rq = rq / nq
+        return q, rp, rq
+
+    # ---- 根轨迹语义: 数据是"绑定相对" (绑定时 = (0,0,0)+identity), ----
+    # ---- 须叠加机器人初始世界摆放 T0: world = T0 ∘ L ----------------------
+    # ---- 落地校准: 不猜站立高度, 让机器人自己落到脚底贴地 ----
+    # 关节按数据第 0 帧定住, 基座在重力下落 (每步清零速度防弹跳) 至脚接触地面,
+    # 取稳定后的根位姿为世界摆放 T0 —— 内置 37 关节版 / --usd DFQ 版都自动正确。
+    print("[replay] 落地校准 (约 1.5 秒, 让脚底贴地)...")
+    q_first, _, _ = sample(0.0)
+    brace = torch.zeros((1, n_j), dtype=torch.float, device=dev)
+    for jf, i in idx_map.items():
+        brace[0, i] = float(q_first[jf])
+    zero_v = torch.zeros_like(brace)
+    zero_root_v = torch.zeros((1, 6), dtype=torch.float, device=dev)
+    _wrv = getattr(robot, "write_root_link_velocity_to_sim", None) \
+        or getattr(robot, "write_root_velocity_to_sim", None)
+    for _ in range(max(int(round(1.5 / sim_dt)), 20)):
+        robot.write_joint_state_to_sim(brace, zero_v)
+        if _wrv is not None:
+            _wrv(zero_root_v)
+        sim.step()
+    try:
+        _t0 = robot.data.root_link_pose_w[0].detach().cpu().numpy()
+        place_p = [float(v) for v in _t0[:3]]
+        place_q = [float(v) for v in _t0[3:7]]
+    except Exception as e:
+        print("[replay][note] 读稳定根位姿失败 (%s), 用默认 0.7923" % e)
+        place_p, place_q = [0.0, 0.0, 0.7923], [1.0, 0.0, 0.0, 0.0]
+    print("[replay] 根轨迹: 绑定相对 -> 世界 (落地后摆放 z=%.3f)" % place_p[2])
+
+    def _quat_mul(a, b):   # wxyz
+        aw, ax, ay, az = a; bw, bx, by, bz = b
+        return (aw*bw - ax*bx - ay*by - az*bz,
+                aw*bx + ax*bw + ay*bz - az*by,
+                aw*by - ax*bz + ay*bw + az*bx,
+                aw*bz + ax*by - ay*bx + az*bw)
+
+    def _quat_rot(q, v):   # v' = q v q*
+        w, x, y, z = q
+        tx, ty, tz = 2*(y*v[2] - z*v[1]), 2*(z*v[0] - x*v[2]), 2*(x*v[1] - y*v[0])
+        return (v[0] + w*tx + (y*tz - z*ty),
+                v[1] + w*ty + (z*tx - x*tz),
+                v[2] + w*tz + (x*ty - y*tx))
+
+    # ---- 写入 API (兼容 2.x 的两种命名) ----
+    # 注意: place_p/place_q 不能叫 p0/q0 —— 初始帧代码用 q0 表示关节角字典!
+    def write_root(p, quat_wxyz):
+        # p/quat 是绑定相对量; 先合成到世界系, API 要 (N,7) 张量 [xyz, qwxyz]
+        pw = _quat_rot(place_q, p)
+        pw = [pw[i] + place_p[i] for i in range(3)]
+        qw = _quat_mul(place_q, quat_wxyz)
+        pose = torch.tensor([pw + list(qw)], dtype=torch.float, device=dev)
+        fn = getattr(robot, "write_root_link_pose_to_sim", None) \
+            or getattr(robot, "write_root_pose_to_sim")
+        fn(pose)
+
+    # 初始帧
+    q0, rp0, rq0 = sample(0.0)
+    pos0 = torch.zeros((1, n_j), dtype=torch.float, device=dev)
+    for jf, i in idx_map.items():
+        pos0[0, i] = float(q0[jf])
+    robot.write_joint_state_to_sim(pos0, torch.zeros_like(pos0))
+    if not args_cli.physics and rp0 is not None:
+        write_root(rp0, rq0)
+    sim.set_camera_view(eye=[2.5, 2.5, 1.6], target=[0.0, 0.0, 0.9])
+
+    print("[replay] 播放中... (关掉窗口或 Ctrl+C 结束)")
+    t = 0.0
+    while simulation_app.is_running():
+        q, rp, rq = sample(t)
+        if args_cli.physics:
+            tgt = torch.zeros((1, n_j), dtype=torch.float, device=dev)
+            for jf, i in idx_map.items():
+                tgt[0, i] = float(q[jf])
+            # 物理模式: 写 PD 目标 (经 actuator 产生力矩), 而非直接搬关节
+            robot.set_joint_position_target(tgt)
+            robot.write_data_to_sim()
+        else:
+            pos = torch.zeros((1, n_j), dtype=torch.float, device=dev)
+            for jf, i in idx_map.items():
+                pos[0, i] = float(q[jf])
+            robot.write_joint_state_to_sim(pos, torch.zeros_like(pos))
+            if rp is not None:
+                write_root(rp, rq)
+            if _wrv is not None:          # 清零根速度, 重力常开下防下坠累积
+                _wrv(zero_root_v)
+        sim.step()
+        sim.render()
+        t += sim_dt * args_cli.speed
+        if t > dur:
+            if args_cli.loop:
+                t = 0.0
+            else:
+                print("[replay] 播放结束 (%.1fs)" % dur)
+                break
+    simulation_app.close()
+
+
+if __name__ == "__main__":
+    main()
